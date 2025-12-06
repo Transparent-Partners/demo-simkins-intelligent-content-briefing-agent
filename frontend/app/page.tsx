@@ -1058,14 +1058,46 @@ export default function Home() {
                     </div>
                   ) : (
                     <>
-                      <div className="flex justify-between items-center mb-2">
-                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Concept Canvas</h3>
-                        <button
-                          onClick={addConcept}
-                          className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-teal-50 border border-teal-100"
-                        >
-                          + Add concept
-                        </button>
+                      <div className="flex flex-col gap-2 mb-2">
+                        <div className="flex justify-between items-center">
+                          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Concept Canvas</h3>
+                          <button
+                            onClick={addConcept}
+                            className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-teal-50 border border-teal-100"
+                          >
+                            + Add concept
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => alert('DAM connection coming soon')}
+                            className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
+                          >
+                            Connect to DAM
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => alert('Brand assets integration coming soon')}
+                            className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
+                          >
+                            Add Brand Assets
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => alert('Brand voice loading coming soon')}
+                            className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
+                          >
+                            Load Brand Voice
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => alert('Brand style guide loading coming soon')}
+                            className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
+                          >
+                            Load Brand Style Guide
+                          </button>
+                        </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {concepts.map((c, index) => (
