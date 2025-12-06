@@ -9,6 +9,8 @@ import json
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import io
+import csv
+from io import StringIO
 
 app = FastAPI(title="Intelligent Briefing Agent")
 
@@ -45,13 +47,54 @@ async def chat_endpoint(request: ChatRequest):
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     try:
-        content = ""
-        if file.filename.endswith('.txt') or file.filename.endswith('.md'):
-            content = (await file.read()).decode('utf-8')
-        else:
-            content = f"[File Uploaded: {file.filename}] (Content extraction pending integration)"
-            
-        return {"filename": file.filename, "content": content}
+        raw_bytes = await file.read()
+        filename = file.filename or "uploaded_file"
+        lower_name = filename.lower()
+
+        # Text and markdown files – simple text content
+        if lower_name.endswith(".txt") or lower_name.endswith(".md"):
+            content = raw_bytes.decode("utf-8", errors="ignore")
+            # Truncate to keep payloads small
+            return {
+                "filename": filename,
+                "kind": "text",
+                "content": content[:5000],
+            }
+
+        # CSV files – treat as structured audience matrix
+        if lower_name.endswith(".csv"):
+            text = raw_bytes.decode("utf-8", errors="ignore")
+            f = StringIO(text)
+            reader = csv.reader(f)
+            headers = next(reader, [])
+
+            rows: List[Dict[str, Any]] = []
+            for row in reader:
+                # Skip completely empty rows
+                if not any(cell.strip() for cell in row):
+                    continue
+                row_dict: Dict[str, Any] = {}
+                for idx, value in enumerate(row):
+                    key = headers[idx] if idx < len(headers) else f"col_{idx}"
+                    row_dict[key] = value
+                rows.append(row_dict)
+
+            return {
+                "filename": filename,
+                "kind": "audience_matrix",
+                "headers": headers,
+                "rows": rows,
+                # Short preview string the frontend can show/send to the agent
+                "content": text[:5000],
+            }
+
+        # Fallback for other file types – binary placeholder for now
+        content = f"[File Uploaded: {filename}] (Content extraction pending integration)"
+        return {
+            "filename": filename,
+            "kind": "unknown",
+            "content": content,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -93,12 +136,42 @@ async def export_pdf(request: ExportRequest):
 
 @app.post("/export/txt")
 async def export_txt(request: ExportRequest):
-    content = f"Production Master Plan: {request.plan.get('campaign_name', 'Untitled')}\n"
-    content += "=" * 50 + "\n\n"
-    content += f"SMP: {request.plan.get('single_minded_proposition', 'N/A')}\n\n"
-    
-    content += "Bill of Materials:\n"
-    for item in request.plan.get('bill_of_materials', []):
-        content += f"- {item.get('asset_id')}: {item.get('concept')} ({item.get('format')})\n"
-        
+    plan = request.plan
+    lines: list[str] = []
+
+    lines.append(f"Production Master Plan: {plan.get('campaign_name', 'Untitled')}")
+    lines.append("=" * 50)
+    lines.append("")
+
+    lines.append(f"SMP: {plan.get('single_minded_proposition', 'N/A')}")
+    lines.append("")
+
+    narrative = plan.get("narrative_brief")
+    if narrative:
+        lines.append("Narrative Brief:")
+        lines.append(narrative)
+        lines.append("")
+
+    lines.append("Bill of Materials:")
+    for item in plan.get("bill_of_materials", []):
+        lines.append(f"- {item.get('asset_id')}: {item.get('concept')} ({item.get('format')})")
+    lines.append("")
+
+    # Optional content matrix section for production teams
+    matrix = plan.get("content_matrix") or []
+    if matrix:
+        lines.append("Content Matrix (rows map assets to audience / triggers / channels):")
+        for row in matrix:
+            summary = (
+                f"- asset={row.get('asset_id')} | "
+                f"audience={row.get('audience_segment')} | "
+                f"stage={row.get('funnel_stage')} | "
+                f"trigger={row.get('trigger')} | "
+                f"channel={row.get('channel')} | "
+                f"format={row.get('format')} | "
+                f"message={row.get('message')}"
+            )
+            lines.append(summary)
+
+    content = "\n".join(lines) + "\n"
     return Response(content=content, media_type="text/plain", headers={"Content-Disposition": "attachment; filename=brief.txt"})

@@ -7,6 +7,17 @@ type Message = {
   content: string;
 };
 
+type MatrixRow = {
+  id: string;
+  audience_segment: string;
+  funnel_stage: string;
+  trigger: string;
+  channel: string;
+  format: string;
+  message: string;
+  variant: string;
+};
+
 // --- Sample Data ---
 const SAMPLE_JSON = {
   "campaign_name": "Summer Glow 2024",
@@ -79,7 +90,8 @@ export default function Home() {
   const [sampleTab, setSampleTab] = useState<'narrative' | 'matrix' | 'json'>('narrative');
 
   // This would eventually be live-updated from the backend
-  const [previewPlan, setPreviewPlan] = useState<any>({}); 
+  const [previewPlan, setPreviewPlan] = useState<any>({ content_matrix: [] }); 
+  const [matrixRows, setMatrixRows] = useState<MatrixRow[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -130,9 +142,31 @@ export default function Home() {
         body: formData,
       });
       const data = await res.json();
-      
-      const userMessage = `I just uploaded a file named "${data.filename}". Content preview: ${data.content.substring(0, 200)}...`;
-      await sendMessage(userMessage);
+
+      // If this is an audience CSV, keep a structured copy in the plan
+      if (data.kind === 'audience_matrix') {
+        setPreviewPlan((prev: any) => ({
+          ...prev,
+          audience_matrix: data.rows,
+          audience_headers: data.headers,
+        }));
+
+        const sampleRows = Array.isArray(data.rows) ? data.rows.slice(0, 3) : [];
+        const sampleJson = JSON.stringify(sampleRows, null, 2);
+        const cols = Array.isArray(data.headers) ? data.headers.join(', ') : 'N/A';
+
+        const userMessage =
+          `I just uploaded an audience matrix CSV called "${data.filename}".\n` +
+          `Columns: ${cols}.\n` +
+          `Here is a small sample of the rows:\n${sampleJson}\n` +
+          `Please use this audience structure when shaping the brief and content matrix.`;
+
+        await sendMessage(userMessage);
+      } else {
+        const preview = (data.content || '').substring(0, 200);
+        const userMessage = `I just uploaded a file named "${data.filename}". Content preview: ${preview}...`;
+        await sendMessage(userMessage);
+      }
       
     } catch (error) {
       console.error("Upload failed", error);
@@ -144,8 +178,23 @@ export default function Home() {
   };
 
   const downloadExport = async (format: 'pdf' | 'txt' | 'json') => {
+    // Keep previewPlan.content_matrix in sync with local editable grid
+    const planToSend = {
+      ...previewPlan,
+      content_matrix: matrixRows.map((row) => ({
+        asset_id: row.id,
+        audience_segment: row.audience_segment,
+        funnel_stage: row.funnel_stage,
+        trigger: row.trigger,
+        channel: row.channel,
+        format: row.format,
+        message: row.message,
+        variant: row.variant,
+      })),
+    };
+
     if (format === 'json') {
-        const blob = new Blob([JSON.stringify(previewPlan, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(planToSend, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -158,7 +207,7 @@ export default function Home() {
         const res = await fetch(`http://localhost:8000/export/${format}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plan: previewPlan }),
+            body: JSON.stringify({ plan: planToSend }),
         });
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -169,6 +218,32 @@ export default function Home() {
     } catch (error) {
         console.error("Export failed", error);
     }
+  };
+
+  const addMatrixRow = () => {
+    setMatrixRows((rows) => [
+      ...rows,
+      {
+        id: `AST-${rows.length + 1}`.padStart(3, '0'),
+        audience_segment: '',
+        funnel_stage: '',
+        trigger: '',
+        channel: '',
+        format: '',
+        message: '',
+        variant: '',
+      },
+    ]);
+  };
+
+  const updateMatrixCell = (index: number, field: keyof MatrixRow, value: string) => {
+    setMatrixRows((rows) =>
+      rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
+    );
+  };
+
+  const removeMatrixRow = (index: number) => {
+    setMatrixRows((rows) => rows.filter((_, i) => i !== index));
   };
 
   return (
@@ -366,21 +441,82 @@ export default function Home() {
         
         <div className="flex-1 p-6 overflow-y-auto bg-slate-50/30">
             <div className="space-y-6">
-                {Object.keys(previewPlan).length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 gap-4 mt-20">
-                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
-                            <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                            </svg>
-                        </div>
-                        <p className="text-sm max-w-[200px]">As you chat, the agent will build the content matrix here.</p>
+                {matrixRows.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 gap-4 mt-20">
+                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
+                      <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                        />
+                      </svg>
                     </div>
+                    <p className="text-sm max-w-[240px]">
+                      After your brief is complete, start sketching the content matrix here. Use the button below to add rows.
+                    </p>
+                    <button
+                      onClick={addMatrixRow}
+                      className="mt-2 px-4 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-full border border-teal-100"
+                    >
+                      Add first row
+                    </button>
+                  </div>
                 ) : (
-                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                        <pre className="text-xs text-slate-600 whitespace-pre-wrap font-mono">
-                            {JSON.stringify(previewPlan, null, 2)}
-                        </pre>
+                  <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Content Matrix</h3>
+                      <button
+                        onClick={addMatrixRow}
+                        className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-teal-50 border border-teal-100"
+                      >
+                        + Add row
+                      </button>
                     </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-slate-50 text-slate-500">
+                          <tr>
+                            <th className="px-2 py-2">Asset ID</th>
+                            <th className="px-2 py-2">Audience</th>
+                            <th className="px-2 py-2">Stage</th>
+                            <th className="px-2 py-2">Trigger</th>
+                            <th className="px-2 py-2">Channel</th>
+                            <th className="px-2 py-2">Format</th>
+                            <th className="px-2 py-2">Message</th>
+                            <th className="px-2 py-2">Variant</th>
+                            <th className="px-2 py-2"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {matrixRows.map((row, index) => (
+                            <tr key={index} className="align-top">
+                              {(['id', 'audience_segment', 'funnel_stage', 'trigger', 'channel', 'format', 'message', 'variant'] as const).map(
+                                (field) => (
+                                  <td key={field} className="px-2 py-1">
+                                    <input
+                                      value={row[field]}
+                                      onChange={(e) => updateMatrixCell(index, field, e.target.value)}
+                                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    />
+                                  </td>
+                                ),
+                              )}
+                              <td className="px-2 py-1 text-right">
+                                <button
+                                  onClick={() => removeMatrixRow(index)}
+                                  className="text-[11px] text-slate-400 hover:text-red-500"
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 )}
             </div>
         </div>
