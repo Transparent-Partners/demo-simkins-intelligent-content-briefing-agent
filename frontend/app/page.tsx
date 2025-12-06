@@ -225,6 +225,8 @@ export default function Home() {
   const [showLibrary, setShowLibrary] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
   const [workspaceView, setWorkspaceView] = useState<'split' | 'brief' | 'matrix'>('split');
+  const [splitRatio, setSplitRatio] = useState(0.6); // left pane width in split view
+  const [isDraggingDivider, setIsDraggingDivider] = useState(false);
 
   // This would eventually be live-updated from the backend
   const [previewPlan, setPreviewPlan] = useState<any>({ content_matrix: [] }); 
@@ -232,12 +234,38 @@ export default function Home() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(scrollToBottom, [messages]);
+
+  // Handle drag-to-resize for split view
+  useEffect(() => {
+    if (!isDraggingDivider) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const ratio = Math.min(0.8, Math.max(0.3, x / rect.width));
+      setSplitRatio(ratio);
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingDivider(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingDivider]);
 
   const sendMessage = async (textOverride?: string) => {
     const textToSend = textOverride || input;
@@ -465,14 +493,22 @@ export default function Home() {
   };
 
   return (
-    <main className="flex h-screen bg-[#F8FAFC] overflow-hidden font-sans text-slate-800">
+    <main
+      ref={containerRef}
+      className="flex h-screen bg-[#F8FAFC] overflow-hidden font-sans text-slate-800"
+    >
       
       {/* LEFT: Chat Interface */}
       {workspaceView !== 'matrix' && (
       <div
         className={`flex flex-col border-r border-gray-200 relative ${
-          workspaceView === 'brief' ? 'w-full max-w-full' : 'flex-1 max-w-[65%]'
+          workspaceView === 'brief' ? 'w-full max-w-full' : 'shrink-0'
         }`}
+        style={
+          workspaceView === 'split'
+            ? { width: `${splitRatio * 100}%` }
+            : undefined
+        }
       >
         
         {/* Header - IMPROVED VISIBILITY */}
@@ -777,12 +813,25 @@ export default function Home() {
 
       {/* RIGHT: Live Preview / Content Matrix Workspace */}
       {workspaceView !== 'brief' && (
-      <div
-        className={`bg-white border-l border-gray-200 hidden md:flex flex-col shadow-xl z-20 ${
-          workspaceView === 'matrix' ? 'w-full' : 'w-[35%]'
-        }`}
-      >
-        <div className="px-6 py-5 border-b border-gray-100 bg-white flex justify-between items-center">
+      <>
+        {/* Draggable divider in split view on desktop */}
+        {workspaceView === 'split' && (
+          <div
+            className="hidden md:block w-1 bg-slate-200 hover:bg-slate-300 cursor-col-resize"
+            onMouseDown={() => setIsDraggingDivider(true)}
+          />
+        )}
+        <div
+          className={`bg-white border-l border-gray-200 hidden md:flex flex-col shadow-xl z-20 ${
+            workspaceView === 'matrix' ? 'w-full' : 'shrink-0'
+          }`}
+          style={
+            workspaceView === 'split'
+              ? { width: `${(1 - splitRatio) * 100}%` }
+              : undefined
+          }
+        >
+        <div className="px-6 py-5 border-b border-gray-100 bg-white flex justify-between items-center select-none">
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Live Draft</h2>
             <div className="flex gap-2">
                 <button onClick={() => downloadExport('json')} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors">JSON</button>
@@ -872,7 +921,8 @@ export default function Home() {
                 )}
             </div>
         </div>
-      </div>
+        </div>
+      </>
       )}
 
     </main>
