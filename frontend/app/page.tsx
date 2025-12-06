@@ -529,7 +529,7 @@ export default function Home() {
     }
   };
 
-  const addMatrixRow = () => {
+  function addMatrixRow() {
     setMatrixRows((rows) => [
       ...rows,
       {
@@ -543,19 +543,19 @@ export default function Home() {
         variant: '',
       },
     ]);
-  };
+  }
 
-  const updateMatrixCell = (index: number, field: keyof MatrixRow, value: string) => {
+  function updateMatrixCell(index: number, field: keyof MatrixRow, value: string) {
     setMatrixRows((rows) =>
       rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
     );
-  };
+  }
 
-  const removeMatrixRow = (index: number) => {
+  function removeMatrixRow(index: number) {
     setMatrixRows((rows) => rows.filter((_, i) => i !== index));
-  };
+  }
 
-  const addConcept = (kind?: 'image' | 'video') => {
+  function addConcept(kind?: 'image' | 'video' | 'copy') {
     const defaultAssetId = matrixRows[0]?.id || `AST-${concepts.length + 1}`;
     setConcepts((prev) => [
       ...prev,
@@ -569,17 +569,17 @@ export default function Home() {
         status: 'idle',
       },
     ]);
-  };
+  }
 
-  const updateConceptField = (index: number, field: keyof Concept, value: string) => {
+  function updateConceptField(index: number, field: keyof Concept, value: string) {
     setConcepts((prev) =>
       prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)),
     );
-  };
+  }
 
-  const removeConcept = (index: number) => {
+  function removeConcept(index: number) {
     setConcepts((prev) => prev.filter((_, i) => i !== index));
-  };
+  }
 
   return (
     <main
