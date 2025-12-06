@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+langchain-google-genai
+langchain
+langgraph
+python-dotenv
+python-multipart
+aiofiles
+reportlab
