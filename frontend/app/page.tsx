@@ -37,6 +37,33 @@ type Concept = {
   generatedPrompt?: string;
 };
 
+function buildConceptPrompt(concept: Concept, plan: any): string {
+  const lines: string[] = [];
+
+  if (plan?.campaign_name) {
+    lines.push(`Campaign: ${plan.campaign_name}`);
+  }
+  if (plan?.single_minded_proposition) {
+    lines.push(`Single-minded proposition: ${plan.single_minded_proposition}`);
+  }
+  if (plan?.primary_audience) {
+    lines.push(`Primary audience: ${plan.primary_audience}`);
+  }
+  if (plan?.brand_voice?.summary) {
+    lines.push(`Brand voice: ${plan.brand_voice.summary}`);
+  }
+
+  lines.push(`Concept title: ${concept.title || 'Untitled concept'}`);
+  if (concept.description) {
+    lines.push(`Concept description: ${concept.description}`);
+  }
+  if (concept.notes) {
+    lines.push(`Production notes: ${concept.notes}`);
+  }
+
+  return lines.join('\n');
+}
+
 // --- Sample Data ---
 const SAMPLE_JSON = {
   "campaign_name": "Summer Glow 2024",
@@ -553,49 +580,6 @@ export default function Home() {
   const removeConcept = (index: number) => {
     setConcepts((prev) => prev.filter((_, i) => i !== index));
   };
-
-  function generateAssetForConcept(index: number) {
-    const concept = concepts[index];
-    if (!concept) return;
-
-    const plan: any = previewPlan || {};
-    const lines: string[] = [];
-
-    if (plan.campaign_name) {
-      lines.push(`Campaign: ${plan.campaign_name}`);
-    }
-    if (plan.single_minded_proposition) {
-      lines.push(`Single-minded proposition: ${plan.single_minded_proposition}`);
-    }
-    if (plan.primary_audience) {
-      lines.push(`Primary audience: ${plan.primary_audience}`);
-    }
-    if (plan.brand_voice?.summary) {
-      lines.push(`Brand voice: ${plan.brand_voice.summary}`);
-    }
-
-    lines.push(`Concept title: ${concept.title || 'Untitled concept'}`);
-    if (concept.description) {
-      lines.push(`Concept description: ${concept.description}`);
-    }
-    if (concept.notes) {
-      lines.push(`Production notes: ${concept.notes}`);
-    }
-
-    const prompt = lines.join('\n');
-
-    setConcepts((prev) =>
-      prev.map((c, i) =>
-        i === index
-          ? {
-              ...c,
-              status: 'ready',
-              generatedPrompt: prompt,
-            }
-          : c,
-      ),
-    );
-  }
 
   return (
     <main
@@ -1245,13 +1229,23 @@ export default function Home() {
                               <div className="flex items-center justify-between">
                                 <button
                                   type="button"
-                                  onClick={() => generateAssetForConcept(index)}
-                                  disabled={c.status === 'generating'}
-                                  className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-teal-500 bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
+                                  onClick={() => {
+                                    const prompt = buildConceptPrompt(c, previewPlan);
+                                    setConcepts((prev) =>
+                                      prev.map((existing, i) =>
+                                        i === index
+                                          ? {
+                                              ...existing,
+                                              status: 'ready',
+                                              generatedPrompt: prompt,
+                                            }
+                                          : existing,
+                                      ),
+                                    );
+                                  }}
+                                  className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-teal-500 bg-teal-600 text-white hover:bg-teal-700"
                                 >
-                                  {c.status === 'generating'
-                                    ? 'Generating...'
-                                    : `Generate ${c.kind === 'video' ? 'video' : c.kind === 'copy' ? 'copy' : 'image'}`}
+                                  {`Generate ${c.kind === 'video' ? 'video' : c.kind === 'copy' ? 'copy' : 'image'} prompt`}
                                 </button>
                                 {c.status === 'ready' && (
                                   <span className="text-[11px] text-emerald-600">Prompt ready for production</span>
