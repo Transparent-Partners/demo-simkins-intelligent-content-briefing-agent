@@ -26,6 +26,14 @@ type HistoricalBrief = {
   narrative_brief: string;
 };
 
+type Concept = {
+  id: string;
+  asset_id: string;
+  title: string;
+  description: string;
+  notes: string;
+};
+
 // --- Sample Data ---
 const SAMPLE_JSON = {
   "campaign_name": "Summer Glow 2024",
@@ -224,13 +232,15 @@ export default function Home() {
   const [sampleTab, setSampleTab] = useState<'narrative' | 'matrix' | 'json'>('narrative');
   const [showLibrary, setShowLibrary] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
-  const [workspaceView, setWorkspaceView] = useState<string>('split');
+  const [workspaceView, setWorkspaceView] = useState<'brief' | 'split' | 'matrix'>('split');
   const [splitRatio, setSplitRatio] = useState(0.6); // left pane width in split view
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
+  const [rightTab, setRightTab] = useState<'matrix' | 'concepts'>('matrix');
 
   // This would eventually be live-updated from the backend
   const [previewPlan, setPreviewPlan] = useState<any>({ content_matrix: [] }); 
   const [matrixRows, setMatrixRows] = useState<MatrixRow[]>([]);
+  const [concepts, setConcepts] = useState<Concept[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -408,6 +418,13 @@ export default function Home() {
         message: row.message,
         variant: row.variant,
       })),
+      concepts: concepts.map((c) => ({
+        id: c.id,
+        asset_id: c.asset_id,
+        title: c.title,
+        description: c.description,
+        notes: c.notes,
+      })),
     };
 
     if (format === 'json') {
@@ -439,6 +456,13 @@ export default function Home() {
           `- asset=${row.asset_id} | audience=${row.audience_segment} | stage=${row.funnel_stage} | trigger=${row.trigger} | channel=${row.channel} | format=${row.format} | message=${row.message}`,
         );
       });
+      if (planToSend.concepts && planToSend.concepts.length) {
+        lines.push('');
+        lines.push('Concepts:');
+        (planToSend.concepts || []).forEach((c: any) => {
+          lines.push(`- [${c.asset_id}] ${c.title}: ${c.description}`);
+        });
+      }
       const text = lines.join('\n') + '\n';
       const blob = new Blob([text], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
@@ -466,6 +490,15 @@ export default function Home() {
     }
   };
 
+  const switchWorkspace = (view: 'brief' | 'split' | 'matrix') => {
+    setWorkspaceView(view);
+    if (view !== 'brief') {
+      // Keep brief-only overlays tied to the brief tab
+      setShowSample(false);
+      setShowLibrary(false);
+    }
+  };
+
   const addMatrixRow = () => {
     setMatrixRows((rows) => [
       ...rows,
@@ -490,6 +523,30 @@ export default function Home() {
 
   const removeMatrixRow = (index: number) => {
     setMatrixRows((rows) => rows.filter((_, i) => i !== index));
+  };
+
+  const addConcept = () => {
+    const defaultAssetId = matrixRows[0]?.id || `AST-${concepts.length + 1}`;
+    setConcepts((prev) => [
+      ...prev,
+      {
+        id: `CON-${prev.length + 1}`.padStart(3, '0'),
+        asset_id: defaultAssetId,
+        title: '',
+        description: '',
+        notes: '',
+      },
+    ]);
+  };
+
+  const updateConceptField = (index: number, field: keyof Concept, value: string) => {
+    setConcepts((prev) =>
+      prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)),
+    );
+  };
+
+  const removeConcept = (index: number) => {
+    setConcepts((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -525,14 +582,18 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setShowLibrary(true)}
+              onClick={() => {
+                if (workspaceView !== 'brief') switchWorkspace('brief');
+                setShowSample(false);
+                setShowLibrary((prev) => !prev);
+              }}
               className="text-xs font-semibold text-slate-500 hover:text-teal-600 transition-colors px-3 py-2 rounded-lg hover:bg-slate-50"
             >
               Brief Library
             </button>
             <div className="hidden md:flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-1 py-0.5">
               <button
-                onClick={() => setWorkspaceView('brief')}
+                onClick={() => switchWorkspace('brief')}
                 className={`text-[11px] px-2 py-1 rounded-full ${
                   workspaceView === 'brief'
                     ? 'bg-white text-slate-900 shadow-sm'
@@ -542,7 +603,7 @@ export default function Home() {
                 Brief
               </button>
               <button
-                onClick={() => setWorkspaceView('split')}
+                onClick={() => switchWorkspace('split')}
                 className={`text-[11px] px-2 py-1 rounded-full ${
                   workspaceView === 'split'
                     ? 'bg-white text-slate-900 shadow-sm'
@@ -552,7 +613,7 @@ export default function Home() {
                 Split
               </button>
               <button
-                onClick={() => setWorkspaceView('matrix')}
+                onClick={() => switchWorkspace('matrix')}
                 className={`text-[11px] px-2 py-1 rounded-full ${
                   workspaceView === 'matrix'
                     ? 'bg-white text-slate-900 shadow-sm'
@@ -563,7 +624,11 @@ export default function Home() {
               </button>
             </div>
             <button
-              onClick={() => setShowSample(!showSample)}
+              onClick={() => {
+                if (workspaceView !== 'brief') switchWorkspace('brief');
+                setShowSample((prev) => !prev);
+                setShowLibrary(false);
+              }}
               className="text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 px-5 py-2.5 rounded-full border border-teal-100 transition-colors shadow-sm"
             >
               {showSample ? 'Hide Sample' : 'View Sample Output'}
@@ -831,96 +896,223 @@ export default function Home() {
               : undefined
           }
         >
-        <div className="px-6 py-5 border-b border-gray-100 bg-white flex justify-between items-center select-none">
-            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Live Draft</h2>
-            <div className="flex gap-2">
-                <button onClick={() => downloadExport('json')} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors">JSON</button>
-                <button onClick={() => downloadExport('txt')} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors">TXT</button>
-                <button onClick={() => downloadExport('pdf')} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors">PDF</button>
+          <div className="px-6 py-5 border-b border-gray-100 bg-white flex justify-between items-center select-none">
+            <div className="flex items-center gap-4">
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Production Workspace</h2>
+              <div className="flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-1 py-0.5">
+                <button
+                  onClick={() => setRightTab('matrix')}
+                  className={`text-[11px] px-2 py-1 rounded-full ${
+                    rightTab === 'matrix'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Matrix
+                </button>
+                <button
+                  onClick={() => setRightTab('concepts')}
+                  className={`text-[11px] px-2 py-1 rounded-full ${
+                    rightTab === 'concepts'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Concepts
+                </button>
+              </div>
             </div>
-        </div>
-        
-        <div className="flex-1 p-6 overflow-y-auto bg-slate-50/30">
+            <div className="flex gap-2">
+              <button
+                onClick={() => downloadExport('json')}
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+              >
+                JSON
+              </button>
+              <button
+                onClick={() => downloadExport('txt')}
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+              >
+                TXT
+              </button>
+              <button
+                onClick={() => downloadExport('pdf')}
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+              >
+                PDF
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 p-6 overflow-y-auto bg-slate-50/30">
             <div className="space-y-6">
-                {matrixRows.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 gap-4 mt-20">
-                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
-                      <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                        />
-                      </svg>
-                    </div>
-                    <p className="text-sm max-w-[240px]">
-                      After your brief is complete, start sketching the content matrix here. Use the button below to add rows.
-                    </p>
-                    <button
-                      onClick={addMatrixRow}
-                      className="mt-2 px-4 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-full border border-teal-100"
-                    >
-                      Add first row
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                    <div className="flex justify-between items-center mb-3">
-                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Content Matrix</h3>
+              {rightTab === 'matrix' && (
+                <>
+                  {matrixRows.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 gap-4 mt-20">
+                      <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
+                        <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                          />
+                        </svg>
+                      </div>
+                      <p className="text-sm max-w-[240px]">
+                        After your brief is complete, start sketching the content matrix here. Use the button below to add rows.
+                      </p>
                       <button
                         onClick={addMatrixRow}
-                        className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-teal-50 border border-teal-100"
+                        className="mt-2 px-4 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-full border border-teal-100"
                       >
-                        + Add row
+                        Add first row
                       </button>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left">
-                        <thead className="bg-slate-50 text-slate-500">
-                          <tr>
-                            <th className="px-2 py-2">Asset ID</th>
-                            <th className="px-2 py-2">Audience</th>
-                            <th className="px-2 py-2">Stage</th>
-                            <th className="px-2 py-2">Trigger</th>
-                            <th className="px-2 py-2">Channel</th>
-                            <th className="px-2 py-2">Format</th>
-                            <th className="px-2 py-2">Message</th>
-                            <th className="px-2 py-2">Variant</th>
-                            <th className="px-2 py-2"></th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {matrixRows.map((row, index) => (
-                            <tr key={index} className="align-top">
-                              {(['id', 'audience_segment', 'funnel_stage', 'trigger', 'channel', 'format', 'message', 'variant'] as const).map(
-                                (field) => (
-                                  <td key={field} className="px-2 py-1">
-                                    <input
-                                      value={row[field]}
-                                      onChange={(e) => updateMatrixCell(index, field, e.target.value)}
-                                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                    />
-                                  </td>
-                                ),
-                              )}
-                              <td className="px-2 py-1 text-right">
-                                <button
-                                  onClick={() => removeMatrixRow(index)}
-                                  className="text-[11px] text-slate-400 hover:text-red-500"
-                                >
-                                  Remove
-                                </button>
-                              </td>
+                  ) : (
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Content Matrix</h3>
+                        <button
+                          onClick={addMatrixRow}
+                          className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-teal-50 border border-teal-100"
+                        >
+                          + Add row
+                        </button>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-slate-50 text-slate-500">
+                            <tr>
+                              <th className="px-2 py-2">Asset ID</th>
+                              <th className="px-2 py-2">Audience</th>
+                              <th className="px-2 py-2">Stage</th>
+                              <th className="px-2 py-2">Trigger</th>
+                              <th className="px-2 py-2">Channel</th>
+                              <th className="px-2 py-2">Format</th>
+                              <th className="px-2 py-2">Message</th>
+                              <th className="px-2 py-2">Variant</th>
+                              <th className="px-2 py-2"></th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {matrixRows.map((row, index) => (
+                              <tr key={index} className="align-top">
+                                {(['id', 'audience_segment', 'funnel_stage', 'trigger', 'channel', 'format', 'message', 'variant'] as const).map(
+                                  (field) => (
+                                    <td key={field} className="px-2 py-1">
+                                      <input
+                                        value={row[field]}
+                                        onChange={(e) => updateMatrixCell(index, field, e.target.value)}
+                                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                      />
+                                    </td>
+                                  ),
+                                )}
+                                <td className="px-2 py-1 text-right">
+                                  <button
+                                    onClick={() => removeMatrixRow(index)}
+                                    className="text-[11px] text-slate-400 hover:text-red-500"
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </>
+              )}
+
+              {rightTab === 'concepts' && (
+                <div className="space-y-4">
+                  {concepts.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 gap-4 mt-20">
+                      <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
+                        <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                            d="M9 13h6m-3-3v6m7 1a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l4.414 4.414A1 1 0 0118 10.414V17z"
+                          />
+                        </svg>
+                      </div>
+                      <p className="text-sm max-w-[260px]">
+                        Start capturing modular creative concepts here. Link each concept to an asset or audience row from the matrix.
+                      </p>
+                      <button
+                        onClick={addConcept}
+                        className="mt-2 px-4 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-full border border-teal-100"
+                      >
+                        Add first concept
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Concept Canvas</h3>
+                        <button
+                          onClick={addConcept}
+                          className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-teal-50 border border-teal-100"
+                        >
+                          + Add concept
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {concepts.map((c, index) => (
+                          <div
+                            key={c.id}
+                            className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-2"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <input
+                                className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                placeholder="Concept title (e.g., Night Reset Ritual)"
+                                value={c.title}
+                                onChange={(e) => updateConceptField(index, 'title', e.target.value)}
+                              />
+                              <input
+                                className="w-28 border border-gray-200 rounded px-2 py-1 text-[11px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                placeholder="Asset ID"
+                                value={c.asset_id}
+                                onChange={(e) => updateConceptField(index, 'asset_id', e.target.value)}
+                              />
+                            </div>
+                            <textarea
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[72px]"
+                              placeholder="Short narrative of the idea, hooks, and how it modularly recombines across channels."
+                              value={c.description}
+                              onChange={(e) => updateConceptField(index, 'description', e.target.value)}
+                            />
+                            <textarea
+                              className="w-full border border-dashed border-gray-200 rounded px-2 py-1 text-[11px] text-slate-500 focus:outline-none focus:ring-1 focus:ring-teal-500/30 focus:border-teal-400 min-h-[48px]"
+                              placeholder="Production notes / visual references (e.g., color language, motion cues, mandatory elements)."
+                              value={c.notes}
+                              onChange={(e) => updateConceptField(index, 'notes', e.target.value)}
+                            />
+                            <div className="flex justify-between items-center pt-1">
+                              <span className="text-[11px] text-slate-400">{c.id}</span>
+                              <button
+                                onClick={() => removeConcept(index)}
+                                className="text-[11px] text-slate-400 hover:text-red-500"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
-        </div>
+          </div>
         </div>
       </>
       )}
