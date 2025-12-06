@@ -224,7 +224,7 @@ export default function Home() {
   const [sampleTab, setSampleTab] = useState<'narrative' | 'matrix' | 'json'>('narrative');
   const [showLibrary, setShowLibrary] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
-  const [workspaceView, setWorkspaceView] = useState<'split' | 'brief' | 'matrix'>('split');
+  const [workspaceView, setWorkspaceView] = useState<string>('split');
   const [splitRatio, setSplitRatio] = useState(0.6); // left pane width in split view
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
 
