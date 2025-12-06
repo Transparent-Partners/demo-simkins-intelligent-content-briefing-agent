@@ -32,6 +32,9 @@ type Concept = {
   title: string;
   description: string;
   notes: string;
+  kind?: 'image' | 'video' | 'copy';
+  status?: 'idle' | 'generating' | 'ready' | 'error';
+  generatedPrompt?: string;
 };
 
 // --- Sample Data ---
@@ -525,7 +528,7 @@ export default function Home() {
     setMatrixRows((rows) => rows.filter((_, i) => i !== index));
   };
 
-  const addConcept = () => {
+  const addConcept = (kind?: 'image' | 'video') => {
     const defaultAssetId = matrixRows[0]?.id || `AST-${concepts.length + 1}`;
     setConcepts((prev) => [
       ...prev,
@@ -535,6 +538,8 @@ export default function Home() {
         title: '',
         description: '',
         notes: '',
+        kind,
+        status: 'idle',
       },
     ]);
   };
@@ -547,6 +552,83 @@ export default function Home() {
 
   const removeConcept = (index: number) => {
     setConcepts((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const generateAssetForConcept = async (index: number) => {
+    const concept = concepts[index];
+    if (!concept) return;
+
+    // Build a prompt from the concept inputs plus any core brief context we have.
+    const lines: string[] = [];
+    if ((previewPlan as any)?.campaign_name) {
+      lines.push(`Campaign: ${(previewPlan as any).campaign_name}`);
+    }
+    if ((previewPlan as any)?.single_minded_proposition) {
+      lines.push(`Single-minded proposition: ${(previewPlan as any).single_minded_proposition}`);
+    }
+    if ((previewPlan as any)?.primary_audience) {
+      lines.push(`Primary audience: ${(previewPlan as any).primary_audience}`);
+    }
+    if ((previewPlan as any)?.brand_voice?.summary) {
+      lines.push(`Brand voice: ${(previewPlan as any).brand_voice.summary}`);
+    }
+    lines.push(`Concept title: ${concept.title || 'Untitled concept'}`);
+    if (concept.description) {
+      lines.push(`Concept description: ${concept.description}`);
+    }
+    if (concept.notes) {
+      lines.push(`Production notes: ${concept.notes}`);
+    }
+
+    const prompt = lines.join('\n');
+
+    // Optimistic UI update: mark as generating and store the prompt we are sending.
+    setConcepts((prev) =>
+      prev.map((c, i) =>
+        i === index
+          ? {
+              ...c,
+              status: 'generating',
+              generatedPrompt: prompt,
+            }
+          : c,
+      ),
+    );
+
+    try {
+      const res = await fetch('http://localhost:8000/generate-asset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: concept.kind ?? 'image',
+          prompt,
+        }),
+      });
+      const data = await res.json();
+      setConcepts((prev) =>
+        prev.map((c, i) =>
+          i === index
+            ? {
+                ...c,
+                status: 'ready',
+                generatedPrompt: data.prompt ?? prompt,
+              }
+            : c,
+        ),
+      );
+    } catch (err) {
+      console.error('Failed to generate asset', err);
+      setConcepts((prev) =>
+        prev.map((c, i) =>
+          i === index
+            ? {
+                ...c,
+                status: 'error',
+              }
+            : c,
+        ),
+      );
+    }
   };
 
   return (
@@ -1135,34 +1217,85 @@ export default function Home() {
                       {concepts.map((c, index) => (
                         <div
                           key={c.id}
-                          className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-2"
+                          className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-3"
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <input
-                              className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                              placeholder="Concept title (e.g., Night Reset Ritual)"
-                              value={c.title}
-                              onChange={(e) => updateConceptField(index, 'title', e.target.value)}
-                            />
-                            <input
-                              className="w-28 border border-gray-200 rounded px-2 py-1 text-[11px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                              placeholder="Asset ID"
-                              value={c.asset_id}
-                              onChange={(e) => updateConceptField(index, 'asset_id', e.target.value)}
-                            />
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <input
+                                  className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                  placeholder="Concept title (e.g., Night Reset Ritual)"
+                                  value={c.title}
+                                  onChange={(e) => updateConceptField(index, 'title', e.target.value)}
+                                />
+                                <input
+                                  className="w-28 border border-gray-200 rounded px-2 py-1 text-[11px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                  placeholder="Asset ID"
+                                  value={c.asset_id}
+                                  onChange={(e) => updateConceptField(index, 'asset_id', e.target.value)}
+                                />
+                              </div>
+                              <textarea
+                                className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[72px]"
+                                placeholder="Short narrative of the idea, hooks, and how it modularly recombines across channels."
+                                value={c.description}
+                                onChange={(e) => updateConceptField(index, 'description', e.target.value)}
+                              />
+                              <textarea
+                                className="w-full border border-dashed border-gray-200 rounded px-2 py-1 text-[11px] text-slate-500 focus:outline-none focus:ring-1 focus:ring-teal-500/30 focus:border-teal-400 min-h-[48px]"
+                                placeholder="Production notes / visual references (e.g., color language, motion cues, mandatory elements)."
+                                value={c.notes}
+                                onChange={(e) => updateConceptField(index, 'notes', e.target.value)}
+                              />
+                            </div>
+                            <div className="flex flex-col gap-2 md:border-l md:border-slate-100 md:pl-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                                  AI asset prompt
+                                </span>
+                                <div className="inline-flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-1 py-0.5">
+                                  {(['image', 'copy', 'video'] as const).map((kind) => (
+                                    <button
+                                      key={kind}
+                                      type="button"
+                                      onClick={() => updateConceptField(index, 'kind', kind)}
+                                      className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                        (c.kind ?? 'image') === kind
+                                          ? 'bg-white text-slate-900 shadow-sm'
+                                          : 'text-slate-500 hover:text-slate-700'
+                                      }`}
+                                    >
+                                      {kind === 'image' ? 'Image' : kind === 'video' ? 'Video' : 'Copy'}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <textarea
+                                className="w-full border border-gray-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[72px]"
+                                placeholder="Optional: refine the prompt the system will send to generate this asset (image, copy, or video). If left blank, it will be built from the concept fields."
+                                value={c.generatedPrompt ?? ''}
+                                onChange={(e) => updateConceptField(index, 'generatedPrompt', e.target.value as any)}
+                              />
+                              <div className="flex items-center justify-between">
+                                <button
+                                  type="button"
+                                  onClick={() => generateAssetForConcept(index)}
+                                  disabled={c.status === 'generating'}
+                                  className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-teal-500 bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
+                                >
+                                  {c.status === 'generating'
+                                    ? 'Generating...'
+                                    : `Generate ${c.kind === 'video' ? 'video' : c.kind === 'copy' ? 'copy' : 'image'}`}
+                                </button>
+                                {c.status === 'ready' && (
+                                  <span className="text-[11px] text-emerald-600">Prompt ready for production</span>
+                                )}
+                                {c.status === 'error' && (
+                                  <span className="text-[11px] text-red-500">Generation failed</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <textarea
-                            className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[72px]"
-                            placeholder="Short narrative of the idea, hooks, and how it modularly recombines across channels."
-                            value={c.description}
-                            onChange={(e) => updateConceptField(index, 'description', e.target.value)}
-                          />
-                          <textarea
-                            className="w-full border border-dashed border-gray-200 rounded px-2 py-1 text-[11px] text-slate-500 focus:outline-none focus:ring-1 focus:ring-teal-500/30 focus:border-teal-400 min-h-[48px]"
-                            placeholder="Production notes / visual references (e.g., color language, motion cues, mandatory elements)."
-                            value={c.notes}
-                            onChange={(e) => updateConceptField(index, 'notes', e.target.value)}
-                          />
                           <div className="flex justify-between items-center pt-1">
                             <span className="text-[11px] text-slate-400">{c.id}</span>
                             <button

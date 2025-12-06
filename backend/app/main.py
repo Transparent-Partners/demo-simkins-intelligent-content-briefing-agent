@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Response
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 from app.agent_core import process_message
 from fastapi.middleware.cors import CORSMiddleware
 import aiofiles
@@ -33,6 +33,21 @@ class ChatRequest(BaseModel):
 class ExportRequest(BaseModel):
     plan: Dict[str, Any]
 
+
+class GenerateAssetRequest(BaseModel):
+    kind: Literal["image", "video", "copy"]
+    prompt: str
+    # In a future iteration we could also accept campaign / brand context here
+    # and use it to condition the image / video generation call.
+
+
+class GenerateAssetResponse(BaseModel):
+    kind: Literal["image", "video", "copy"]
+    prompt: str
+    status: str
+    # Placeholder for future URLs or IDs returned from GCP creative services.
+    asset_url: Optional[str] = None
+
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
@@ -41,6 +56,34 @@ async def chat_endpoint(request: ChatRequest):
             request.current_plan
         )
         return {"reply": reply}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/generate-asset", response_model=GenerateAssetResponse)
+async def generate_asset(request: GenerateAssetRequest):
+    """
+    Turn a concept canvas entry into a concrete prompt for downstream
+    image / video generation.
+
+    This is intentionally a thin stub so we can wire the UI and payload shape
+    without yet depending on specific GCP client libraries.
+
+    To connect this to Google Cloud creative AI in a later step you would:
+      - Enable Vertex AI in your GCP project.
+      - Use the appropriate Python client (e.g., for Imagen or Veo) with
+        service account credentials.
+      - Call the model with `request.prompt` (and `request.kind`) and return
+        the resulting image / video URL in `asset_url`.
+    """
+    try:
+        # For now just echo the prompt back with a stubbed status.
+        return GenerateAssetResponse(
+            kind=request.kind,
+            prompt=request.prompt,
+            status="queued",
+            asset_url=None,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
