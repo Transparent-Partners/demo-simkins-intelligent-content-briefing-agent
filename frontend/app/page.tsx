@@ -552,111 +552,119 @@ export default function Home() {
   return (
     <main
       ref={containerRef}
-      className="flex h-screen bg-[#F8FAFC] overflow-hidden font-sans text-slate-800"
+      className="flex flex-col h-screen bg-[#F8FAFC] overflow-hidden font-sans text-slate-800"
     >
-      
-      {/* LEFT: Chat Interface */}
-      {workspaceView !== 'matrix' && (
-      <div
-        className={`flex flex-col border-r border-gray-200 relative ${
-          workspaceView === 'brief' ? 'w-full max-w-full' : 'shrink-0'
-        }`}
-        style={
-          workspaceView === 'split'
-            ? { width: `${splitRatio * 100}%` }
-            : undefined
-        }
-      >
-        
-        {/* Header - IMPROVED VISIBILITY */}
-        <div className="px-8 py-6 border-b border-gray-200 bg-white flex justify-between items-center shadow-sm z-10">
-          <div className="flex items-center gap-6">
-            <div className="h-12 w-auto">
-               {/* Increased logo size and removed fixed width container constraint */}
-               <img src="/logo.png" alt="Transparent Partners" className="h-12 w-auto object-contain" />
-            </div>
-            <div className="border-l border-slate-200 pl-6 h-10 flex flex-col justify-center">
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-none mb-1">Intelligent Briefing Agent</h1>
-              <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Powered by Transparent Partners</p>
-            </div>
+      {/* Global header - shows across all workspace views */}
+      <div className="px-8 py-6 border-b border-gray-200 bg-white flex justify-between items-center shadow-sm z-10">
+        <div className="flex items-center gap-6">
+          <div className="h-12 w-auto">
+            {/* Increased logo size and removed fixed width container constraint */}
+            <img src="/logo.png" alt="Transparent Partners" className="h-12 w-auto object-contain" />
           </div>
-          <div className="flex items-center gap-3">
-            {workspaceView === 'brief' && (
-              <button
-                onClick={() => {
-                  if (workspaceView !== 'brief') switchWorkspace('brief');
-                  setShowSample(false);
-                  setShowLibrary((prev) => !prev);
-                }}
-                className="text-xs font-semibold text-slate-500 hover:text-teal-600 transition-colors px-3 py-2 rounded-lg hover:bg-slate-50"
-              >
-                Brief Library
-              </button>
-            )}
-            <div className="hidden md:flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-1 py-0.5">
-              <button
-                onClick={() => switchWorkspace('brief')}
-                className={`text-[11px] px-2 py-1 rounded-full ${
-                  workspaceView === 'brief'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Brief
-              </button>
-              <button
-                onClick={() => switchWorkspace('split')}
-                className={`text-[11px] px-2 py-1 rounded-full ${
-                  workspaceView === 'split'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Split
-              </button>
-              <button
-                onClick={() => switchWorkspace('matrix')}
-                className="text-[11px] px-2 py-1 rounded-full text-slate-500 hover:text-slate-700"
-              >
-                Matrix
-              </button>
-            </div>
+          <div className="border-l border-slate-200 pl-6 h-10 flex flex-col justify-center">
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-none mb-1">
+              Intelligent Briefing Agent
+            </h1>
+            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
+              Powered by Transparent Partners
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {workspaceView === 'brief' && (
             <button
               onClick={() => {
                 if (workspaceView !== 'brief') switchWorkspace('brief');
-                setShowSample((prev) => !prev);
-                setShowLibrary(false);
+                setShowSample(false);
+                setShowLibrary((prev) => !prev);
               }}
-              className="text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 px-5 py-2.5 rounded-full border border-teal-100 transition-colors shadow-sm"
+              className="text-xs font-semibold text-slate-500 hover:text-teal-600 transition-colors px-3 py-2 rounded-lg hover:bg-slate-50"
             >
-              {showSample ? 'Hide Sample' : 'View Sample Output'}
+              Brief Library
             </button>
+          )}
+          <div className="hidden md:flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-1 py-0.5">
             <button
-              onClick={() => {
-                setDemoMode((prev) => !prev);
-                // Reset conversation when toggling demo mode for clarity
-                setMessages([
-                  {
-                    role: 'assistant',
-                    content: !demoMode
-                      ? 'Demo mode is ON. I will simulate the agent locally so you can click around the interface without a backend.'
-                      : 'Demo mode is OFF. I will now talk to the live backend (when available on localhost:8000).',
-                  },
-                ]);
-              }}
-              className={`text-xs font-semibold px-4 py-2 rounded-full border transition-colors ${
-                demoMode
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-white text-slate-500 border-slate-200 hover:text-teal-600 hover:border-teal-300'
+              onClick={() => switchWorkspace('brief')}
+              className={`text-[11px] px-2 py-1 rounded-full ${
+                workspaceView === 'brief'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              {demoMode ? 'Demo Mode: On' : 'Demo Mode: Off'}
+              Brief
+            </button>
+            <button
+              onClick={() => switchWorkspace('split')}
+              className={`text-[11px] px-2 py-1 rounded-full ${
+                workspaceView === 'split'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Split
+            </button>
+            <button
+              onClick={() => switchWorkspace('matrix')}
+              className={`text-[11px] px-2 py-1 rounded-full ${
+                workspaceView === 'matrix'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Matrix
             </button>
           </div>
+          <button
+            onClick={() => {
+              if (workspaceView !== 'brief') switchWorkspace('brief');
+              setShowSample((prev) => !prev);
+              setShowLibrary(false);
+            }}
+            className="text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 px-5 py-2.5 rounded-full border border-teal-100 transition-colors shadow-sm"
+          >
+            {showSample ? 'Hide Sample' : 'View Sample Output'}
+          </button>
+          <button
+            onClick={() => {
+              setDemoMode((prev) => !prev);
+              // Reset conversation when toggling demo mode for clarity
+              setMessages([
+                {
+                  role: 'assistant',
+                  content: !demoMode
+                    ? 'Demo mode is ON. I will simulate the agent locally so you can click around the interface without a backend.'
+                    : 'Demo mode is OFF. I will now talk to the live backend (when available on localhost:8000).',
+                },
+              ]);
+            }}
+            className={`text-xs font-semibold px-4 py-2 rounded-full border transition-colors ${
+              demoMode
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-white text-slate-500 border-slate-200 hover:text-teal-600 hover:border-teal-300'
+            }`}
+          >
+            {demoMode ? 'Demo Mode: On' : 'Demo Mode: Off'}
+          </button>
         </div>
+      </div>
 
-        {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-[#F8FAFC]">
+      {/* Main workspace row: left chat + right production workspace */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* LEFT: Chat Interface */}
+        {workspaceView !== 'matrix' && (
+          <div
+            className={`flex flex-col border-r border-gray-200 relative ${
+              workspaceView === 'brief' ? 'w-full max-w-full' : 'shrink-0'
+            }`}
+            style={
+              workspaceView === 'split'
+                ? { width: `${splitRatio * 100}%` }
+                : undefined
+            }
+          >
+            {/* Chat Area */}
+            <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-[#F8FAFC]">
           {messages.map((msg, idx) => (
             <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] p-5 rounded-2xl text-[15px] leading-relaxed shadow-sm ${
