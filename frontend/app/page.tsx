@@ -614,11 +614,7 @@ export default function Home() {
               </button>
               <button
                 onClick={() => switchWorkspace('matrix')}
-                className={`text-[11px] px-2 py-1 rounded-full ${
-                  workspaceView === 'matrix'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
+                className="text-[11px] px-2 py-1 rounded-full text-slate-500 hover:text-slate-700"
               >
                 Matrix
               </button>
