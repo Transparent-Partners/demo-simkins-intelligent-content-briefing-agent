@@ -554,24 +554,26 @@ export default function Home() {
     setConcepts((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const generateAssetForConcept = async (index: number) => {
+  const generateAssetForConcept = (index: number) => {
     const concept = concepts[index];
     if (!concept) return;
 
-    // Build a prompt from the concept inputs plus any core brief context we have.
+    const plan: any = previewPlan || {};
     const lines: string[] = [];
-    if ((previewPlan as any)?.campaign_name) {
-      lines.push(`Campaign: ${(previewPlan as any).campaign_name}`);
+
+    if (plan.campaign_name) {
+      lines.push(`Campaign: ${plan.campaign_name}`);
     }
-    if ((previewPlan as any)?.single_minded_proposition) {
-      lines.push(`Single-minded proposition: ${(previewPlan as any).single_minded_proposition}`);
+    if (plan.single_minded_proposition) {
+      lines.push(`Single-minded proposition: ${plan.single_minded_proposition}`);
     }
-    if ((previewPlan as any)?.primary_audience) {
-      lines.push(`Primary audience: ${(previewPlan as any).primary_audience}`);
+    if (plan.primary_audience) {
+      lines.push(`Primary audience: ${plan.primary_audience}`);
     }
-    if ((previewPlan as any)?.brand_voice?.summary) {
-      lines.push(`Brand voice: ${(previewPlan as any).brand_voice.summary}`);
+    if (plan.brand_voice?.summary) {
+      lines.push(`Brand voice: ${plan.brand_voice.summary}`);
     }
+
     lines.push(`Concept title: ${concept.title || 'Untitled concept'}`);
     if (concept.description) {
       lines.push(`Concept description: ${concept.description}`);
@@ -582,53 +584,17 @@ export default function Home() {
 
     const prompt = lines.join('\n');
 
-    // Optimistic UI update: mark as generating and store the prompt we are sending.
     setConcepts((prev) =>
       prev.map((c, i) =>
         i === index
           ? {
               ...c,
-              status: 'generating',
+              status: 'ready',
               generatedPrompt: prompt,
             }
           : c,
       ),
     );
-
-    try {
-      const res = await fetch('http://localhost:8000/generate-asset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          kind: concept.kind ?? 'image',
-          prompt,
-        }),
-      });
-      const data = await res.json();
-      setConcepts((prev) =>
-        prev.map((c, i) =>
-          i === index
-            ? {
-                ...c,
-                status: 'ready',
-                generatedPrompt: data.prompt ?? prompt,
-              }
-            : c,
-        ),
-      );
-    } catch (err) {
-      console.error('Failed to generate asset', err);
-      setConcepts((prev) =>
-        prev.map((c, i) =>
-          i === index
-            ? {
-                ...c,
-                status: 'error',
-              }
-            : c,
-        ),
-      );
-    }
   };
 
   return (
