@@ -18,6 +18,14 @@ type MatrixRow = {
   variant: string;
 };
 
+type HistoricalBrief = {
+  id: string;
+  campaign_name: string;
+  single_minded_proposition: string;
+  primary_audience: string;
+  narrative_brief: string;
+};
+
 // --- Sample Data ---
 const SAMPLE_JSON = {
   "campaign_name": "Summer Glow 2024",
@@ -78,6 +86,132 @@ const SAMPLE_MATRIX = [
   { id: "VID-002", audience: "Loyalty", trigger: "Purchase > 30d", content: "Replenish Reminder", format: "9:16 Video" },
 ];
 
+const HISTORICAL_BRIEFS: HistoricalBrief[] = [
+  {
+    id: "HB-001",
+    campaign_name: "Aurora Sleep OS Launch",
+    single_minded_proposition: "Turn any bedroom into a personalized sleep studio in one week.",
+    primary_audience:
+      "Urban professionals 28–45 who feel constantly 'wired and tired' and are willing to invest in wellness tech.",
+    narrative_brief: `
+BACKGROUND
+Aurora is a subscription-based "Sleep OS" that orchestrates light, sound, temperature, and routine across devices to fix poor sleep hygiene in 7 days. The product is inherently modular: scenes, soundscapes, routines, and tips can all be mixed and matched based on data signals.
+
+OBJECTIVE
+Drive platform sign-ups and 90-day retention by repositioning "sleep tracking" from passive monitoring to active transformation, and by building a reusable content system that can recombine across audiences, stages, and channels.
+
+SINGLE MINDED PROPOSITION
+Turn any bedroom into a personalized sleep studio in one week.
+
+PRIMARY AUDIENCE
+Urban professionals 28–45 who feel constantly "wired and tired", have tried meditation / tracking apps, and now want a solution that actually changes their environment, not just their data. They are tech-forward, over-scheduled, and skeptical of wellness fluff.
+
+MODULAR CONTENT STRATEGY
+- Atomic units:
+  - Problem frames (e.g., "doom scrolling at 1:30am", "3am wake-up", "weekend catch-up sleep").
+  - Sleep studio scenes (Night Reset, Deep Focus, Gentle Wakeup).
+  - Proof points (improved sleep efficiency %, fewer wake-ups, routine streaks).
+  - Coaching micro-tips (30–60 character tiles that can travel across channels).
+- Dimensions for recombination:
+  - Audience sensitivity (biohackers vs burned-out professionals).
+  - Funnel stage (Awareness = emotional consequences, Consideration = OS mechanics, Conversion = 7-day trial offer).
+  - Channel constraints (short vertical video, static tiles, email modules).
+
+CONTENT MATRIX INTENT
+- Upper-funnel: 9:16 and 16:9 video stories that dramatize the "before" and "after" state using modular scenes and VO lines. Variants pivot on different pain points (anxiety, focus, mood).
+- Mid-funnel: carousels and email modules that pair specific problems with Aurora "recipes" (bundles of scenes + settings).
+- Lower-funnel / CRM: triggered flows that reuse the same ingredients but plug in personalized data (nights improved, routines completed).
+
+GUARDRAILS
+- Avoid medical claims; no promises to "cure" conditions.
+- Visual language should feel cinematic and calm, not medical or clinical.
+- The OS metaphor should stay intuitive: never show overwhelming dashboards; focus on simple, modular building blocks the viewer can imagine using.
+`,
+  },
+  {
+    id: "HB-002",
+    campaign_name: "VoltCharge Go – Workplace Fast Charging",
+    single_minded_proposition: "Make every office parking spot feel like a premium EV perk.",
+    primary_audience:
+      "HR and Facilities leaders at mid-market companies offering EV charging as an employee benefit.",
+    narrative_brief: `
+BACKGROUND
+VoltCharge Go installs and manages Level 3 fast chargers in office parks under a revenue-share model. The proposition to employees is emotional (feels like a premium perk), while the proposition to HR / Facilities is rational (recruiting, retention, and ESG optics).
+
+OBJECTIVE
+Generate qualified leads from HR / Facilities leaders and position VoltCharge Go as the easiest way to turn parking lots into recruiting and retention assets, using a modular content system that can flex across buyer roles, verticals, and funnel stages.
+
+SINGLE MINDED PROPOSITION
+Make every office parking spot feel like a premium EV perk.
+
+PRIMARY AUDIENCE
+HR / People teams and Facilities leads at 500–5,000 employee companies who are under pressure to modernize benefits and sustainability optics without adding operational burden.
+
+MODULAR CONTENT STRATEGY
+- Atomic units:
+  - Employee vignettes (new hire, working parent, sustainability champion).
+  - Proof tiles (recruiting metric lifts, satisfaction scores, utilization rates).
+  - Objection handlers (no CapEx, turnkey ops, transparent pricing).
+  - Vertical overlays (tech, healthcare, professional services).
+- Dimensions for recombination:
+  - Role (HR vs Facilities vs Finance).
+  - Building profile (HQ campus vs satellite office).
+  - Funnel stage (Awareness = "parking as perk", Consideration = economics and operations, Decision = case studies and calculators).
+
+CONTENT MATRIX INTENT
+- Upper-funnel: snackable video and animation that reframes the parking lot as part of the "benefits stack". Variants swap in different employee vignettes.
+- Mid-funnel: interactive calculators, one-pagers, and LinkedIn carousels that modularize business cases and objection handlers by role.
+- Lower-funnel: retargeting units that reuse proof tiles and testimonials, but tailored to the vertical + role combination detected.
+
+GUARDRAILS
+- No "range anxiety fear-mongering"; keep tone confident and solution-forward.
+- Avoid generic sustainability stock imagery; show real office environments and people.
+- Make it obvious that the system is modular and scalable across multiple sites, not a one-off pilot.
+`,
+  },
+  {
+    id: "HB-003",
+    campaign_name: "HarvestBox Micro-Market for Multi-Family Buildings",
+    single_minded_proposition: "Turn your lobby into the most loved amenity in the building.",
+    primary_audience:
+      "Property managers and owners of Class A/B multi-family buildings in urban cores.",
+    narrative_brief: `
+BACKGROUND
+HarvestBox installs 24/7 self-checkout "micro-markets" stocked with fresh, local groceries and ready-to-eat meals in residential buildings. It aims to convert everyday "forgot one thing" frictions into memorable building touchpoints.
+
+OBJECTIVE
+Increase inbound demos from property owners and demonstrate that HarvestBox drives both resident satisfaction and ancillary revenue, with a modular content system that can pivot across building archetypes, resident personas, and decision-maker needs.
+
+SINGLE MINDED PROPOSITION
+Turn your lobby into the most loved amenity in the building.
+
+PRIMARY AUDIENCE
+Property managers and asset managers of 150+ unit buildings, focused on NOI, retention, and reviews. They value amenities that are low-touch to operate but high-visibility to residents.
+
+MODULAR CONTENT STRATEGY
+- Atomic units:
+  - Resident moments (late-night snack, forgotten breakfast, hosting friends, kid snack emergencies).
+  - Amenity proof points (NPS lift, review score deltas, occupancy/renewal metrics).
+  - Building archetypes (young professionals, families, active adults).
+  - Operator promises (low-ops, no-staffing, merchandising handled).
+- Dimensions for recombination:
+  - Audience lens (owner, asset manager, property manager).
+  - Building type and geography (downtown high-rise vs suburban garden).
+  - Funnel stage (Awareness = resident stories, Consideration = economics and operations, Decision = case studies and testimonials).
+
+CONTENT MATRIX INTENT
+- Upper-funnel: short vertical video sequences that modularly string together resident moments to show how the micro-market "shows up" throughout a week.
+- Mid-funnel: carousels and landing-page modules that pair a building archetype with the right mix of resident moments and amenity proof points.
+- Lower-funnel: retargeting and CRM that reuse the same modules but swap in building-type specific proof, such as "families in mid-rise X" vs "professionals in tower Y".
+
+GUARDRAILS
+- Avoid framing HarvestBox as a full grocery replacement; position it as hyper-convenient top-up.
+- Visuals should feel warm, neighborly, and food-first, not like a vending machine.
+- Always make it clear that the system is turnkey and does not create new staffing headaches.
+`,
+  },
+];
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: 'Hello! I am your Creative Strategy Architect. I can help you build a production-ready intelligent content brief. Shall we start with the Campaign Name and your primary goal?' }
@@ -88,6 +222,7 @@ export default function Home() {
   // Sample View State
   const [showSample, setShowSample] = useState(false);
   const [sampleTab, setSampleTab] = useState<'narrative' | 'matrix' | 'json'>('narrative');
+  const [showLibrary, setShowLibrary] = useState(false);
 
   // This would eventually be live-updated from the backend
   const [previewPlan, setPreviewPlan] = useState<any>({ content_matrix: [] }); 
@@ -265,7 +400,10 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <button className="text-xs font-semibold text-slate-500 hover:text-teal-600 transition-colors px-3 py-2 rounded-lg hover:bg-slate-50">
+            <button
+              onClick={() => setShowLibrary(true)}
+              className="text-xs font-semibold text-slate-500 hover:text-teal-600 transition-colors px-3 py-2 rounded-lg hover:bg-slate-50"
+            >
               Brief Library
             </button>
             <button 
@@ -425,6 +563,73 @@ export default function Home() {
                     )}
                 </div>
             </div>
+        )}
+
+        {/* Historical Brief Library Modal */}
+        {showLibrary && (
+          <div className="absolute inset-0 bg-white/98 backdrop-blur-md z-30 flex flex-col">
+            <div className="flex justify-between items-center px-8 py-6 border-b border-gray-100">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">Historical Intelligent Content Briefs</h2>
+                <p className="text-sm text-slate-500">
+                  Reference-ready examples of completed briefs and content plans for different categories.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowLibrary(false)}
+                className="p-2 hover:bg-gray-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-8 bg-slate-50">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
+                {HISTORICAL_BRIEFS.map((brief) => (
+                  <div
+                    key={brief.id}
+                    className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 flex flex-col justify-between"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-semibold text-slate-900">{brief.campaign_name}</h3>
+                        <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                          {brief.id}
+                        </span>
+                      </div>
+                      <p className="text-xs font-medium text-slate-600">
+                        SMP: <span className="font-normal">{brief.single_minded_proposition}</span>
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Primary audience: {brief.primary_audience}
+                      </p>
+                      <div className="bg-slate-50 rounded-lg border border-slate-100 p-3">
+                        <p className="text-[11px] text-slate-500 mb-1 font-semibold uppercase tracking-wide">
+                          Narrative excerpt
+                        </p>
+                        <pre className="text-[11px] text-slate-600 whitespace-pre-wrap max-h-40 overflow-y-auto">
+                          {brief.narrative_brief.trim()}
+                        </pre>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex justify-between items-center">
+                      <span className="text-[11px] text-slate-400">
+                        Content matrix + concepts available in final plan (coming soon).
+                      </span>
+                      <button
+                        disabled
+                        className="text-[11px] px-3 py-1.5 rounded-full border border-slate-200 text-slate-400 cursor-not-allowed"
+                      >
+                        Load into agent (future)
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
