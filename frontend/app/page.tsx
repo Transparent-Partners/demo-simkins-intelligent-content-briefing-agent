@@ -47,6 +47,23 @@ const BASE_MATRIX_FIELDS: MatrixFieldConfig[] = [
   { key: 'notes', label: 'Notes' },
 ];
 
+// Brief field configuration for the live brief editor
+type BriefFieldKey = string;
+
+type BriefFieldConfig = {
+  key: BriefFieldKey;
+  label: string;
+  multiline?: boolean;
+  isCustom?: boolean;
+};
+
+const BASE_BRIEF_FIELDS: BriefFieldConfig[] = [
+  { key: 'campaign_name', label: 'Campaign Name' },
+  { key: 'single_minded_proposition', label: 'Single-minded Proposition', multiline: true },
+  { key: 'primary_audience', label: 'Primary Audience', multiline: true },
+  { key: 'narrative_brief', label: 'Narrative Brief', multiline: true },
+];
+
 type ContentMatrixTemplate = {
   id: string;
   name: string;
@@ -396,9 +413,18 @@ export default function Home() {
   const [showMatrixFieldConfig, setShowMatrixFieldConfig] = useState(false);
   const [showMatrixLibrary, setShowMatrixLibrary] = useState(false);
   const [matrixLibrary, setMatrixLibrary] = useState<ContentMatrixTemplate[]>(INITIAL_MATRIX_LIBRARY);
+  const [briefFields, setBriefFields] = useState<BriefFieldConfig[]>(BASE_BRIEF_FIELDS);
 
   // This would eventually be live-updated from the backend
-  const [previewPlan, setPreviewPlan] = useState<any>({ content_matrix: [] }); 
+  const [previewPlan, setPreviewPlan] = useState<any>({
+    campaign_name: 'Intelligent Content System – Demo Campaign',
+    single_minded_proposition: 'Show how a single modular content system can serve multiple audiences and channels.',
+    primary_audience: 'Marketing and creative leaders evaluating intelligent content and modular storytelling.',
+    narrative_brief:
+      'Use this brief to define the story, audiences, and guardrails for an intelligent content system. ' +
+      'Capture objectives, constraints, and how modular assets should recombine across channels.',
+    content_matrix: [],
+  }); 
   const [matrixRows, setMatrixRows] = useState<MatrixRow[]>([]);
   const [concepts, setConcepts] = useState<Concept[]>([
     {
@@ -752,6 +778,53 @@ export default function Home() {
     });
   }
 
+  function addCustomBriefField() {
+    const rawLabel = window.prompt('Name this brief field (e.g., Secondary Audience, Mandatories):');
+    if (!rawLabel) return;
+    const trimmed = rawLabel.trim();
+    if (!trimmed) return;
+
+    const derivedKey = trimmed
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '');
+    const key: BriefFieldKey = derivedKey || `field_${briefFields.length + 1}`;
+
+    if (briefFields.some((f) => f.key === key)) {
+      alert('A brief field with this name already exists.');
+      return;
+    }
+
+    const newField: BriefFieldConfig = {
+      key,
+      label: trimmed,
+      multiline: true,
+      isCustom: true,
+    };
+
+    setBriefFields((prev) => [...prev, newField]);
+    setPreviewPlan((prev: any) => ({
+      ...prev,
+      [key]: '',
+    }));
+  }
+
+  function deleteCustomBriefField(key: BriefFieldKey) {
+    setBriefFields((prev) => prev.filter((f) => !(f.key === key && f.isCustom)));
+    setPreviewPlan((prev: any) => {
+      if (!prev) return prev;
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
+  }
+
+  function updateBriefFieldValue(key: BriefFieldKey, value: string) {
+    setPreviewPlan((prev: any) => ({
+      ...prev,
+      [key]: value,
+    }));
+  }
+
   function addCustomMatrixField() {
     const rawLabel = window.prompt('Name this new column (e.g., Market, Owner, Priority):');
     if (!rawLabel) return;
@@ -923,13 +996,15 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Main workspace row: left chat + right production workspace */}
+      {/* Main workspace row: left chat + right panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* LEFT: Chat Interface */}
         {workspaceView !== 'matrix' && (
           <div
             className={`flex flex-col border-r border-gray-200 relative ${
-              workspaceView === 'brief' ? 'w-full max-w-full' : 'shrink-0'
+              workspaceView === 'brief'
+                ? 'w-full md:w-1/2 md:max-w-1/2'
+                : 'shrink-0'
             }`}
             style={
               workspaceView === 'split'
@@ -1156,6 +1231,70 @@ export default function Home() {
           </div>
         )}
       </div>
+      )}
+
+      {/* RIGHT: Live Brief Panel on Brief tab */}
+      {workspaceView === 'brief' && (
+        <div className="hidden md:flex flex-col w-1/2 max-w-1/2 bg-white border-l border-gray-200 shadow-xl z-10">
+          <div className="px-6 py-5 border-b border-gray-100 bg-white flex justify-between items-center select-none">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Intelligent Content Brief</h2>
+            </div>
+            <button
+              type="button"
+              onClick={addCustomBriefField}
+              className="text-[11px] px-3 py-1.5 rounded-full border border-teal-500 text-teal-700 bg-teal-50 hover:bg-teal-100"
+            >
+              + Add brief field
+            </button>
+          </div>
+          <div className="flex-1 p-6 overflow-y-auto bg-slate-50/40 space-y-4">
+            <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Brief Fields</h3>
+              </div>
+              <div className="space-y-3">
+                {briefFields.map((field) => {
+                  const value = (previewPlan && (previewPlan as any)[field.key]) ?? '';
+                  const multiline = field.multiline;
+                  return (
+                    <div key={field.key} className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-[11px] font-medium text-slate-600">
+                          {field.label}
+                        </label>
+                        {field.isCustom && (
+                          <button
+                            type="button"
+                            onClick={() => deleteCustomBriefField(field.key)}
+                            className="text-[10px] text-slate-400 hover:text-red-500"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      {multiline ? (
+                        <textarea
+                          className="w-full border border-slate-200 rounded-md px-2 py-1.5 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[72px]"
+                          value={value}
+                          onChange={(e) => updateBriefFieldValue(field.key, e.target.value)}
+                          placeholder={field.label}
+                        />
+                      ) : (
+                        <input
+                          className="w-full border border-slate-200 rounded-md px-2 py-1.5 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                          value={value}
+                          onChange={(e) => updateBriefFieldValue(field.key, e.target.value)}
+                          placeholder={field.label}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* RIGHT: Live Preview / Content Matrix Workspace */}
