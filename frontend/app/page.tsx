@@ -388,7 +388,7 @@ export default function Home() {
   const [workspaceView, setWorkspaceView] = useState<'brief' | 'split' | 'matrix'>('split');
   const [splitRatio, setSplitRatio] = useState(0.6); // left pane width in split view
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
-  const [rightTab, setRightTab] = useState<'matrix' | 'concepts'>('matrix');
+  const [rightTab, setRightTab] = useState<'matrix' | 'concepts' | 'moodboard'>('matrix');
   const [matrixFields, setMatrixFields] = useState<MatrixFieldConfig[]>(BASE_MATRIX_FIELDS);
   const [visibleMatrixFields, setVisibleMatrixFields] = useState<MatrixFieldKey[]>(
     BASE_MATRIX_FIELDS.map((f) => f.key),
@@ -401,6 +401,7 @@ export default function Home() {
   const [previewPlan, setPreviewPlan] = useState<any>({ content_matrix: [] }); 
   const [matrixRows, setMatrixRows] = useState<MatrixRow[]>([]);
   const [concepts, setConcepts] = useState<Concept[]>([]);
+  const [moodBoardConceptIds, setMoodBoardConceptIds] = useState<string[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1175,6 +1176,16 @@ export default function Home() {
                 >
                   Concepts
                 </button>
+                <button
+                  onClick={() => setRightTab('moodboard')}
+                  className={`text-[11px] px-2 py-1 rounded-full ${
+                    rightTab === 'moodboard'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Concept Board
+                </button>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -1366,27 +1377,27 @@ export default function Home() {
                               Concepts
                             </h3>
                             <p className="text-[11px] text-slate-500">
-                              Quick view of concepts linked to this plan. Edit details in the Concepts tab.
+                              Read-only view of concepts linked to this plan. Manage and delete them in the Concepts tab.
                             </p>
                           </div>
                           <button
                             type="button"
-                            onClick={addConcept}
-                            className="text-[11px] px-3 py-1 rounded-full bg-teal-50 border border-teal-100 text-teal-700 hover:bg-teal-100"
+                            onClick={() => setRightTab('concepts')}
+                            className="text-[11px] px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100"
                           >
-                            + Add concept
+                            Open Concepts tab
                           </button>
                         </div>
 
                         {concepts.length === 0 ? (
                           <div className="flex-1 flex flex-col items-center justify-center text-center text-slate-400 gap-2 py-4">
-                            <p className="text-[11px] max-w-[220px]">
-                              No concepts yet. Add concepts here or switch to the Concepts tab for richer editing.
+                            <p className="text-[11px] max-w-[240px]">
+                              No concepts yet. Use the Concepts tab to create and manage concepts for this matrix.
                             </p>
                           </div>
                         ) : (
                           <div className="flex-1 overflow-y-auto space-y-2">
-                            {concepts.map((c, index) => (
+                            {concepts.map((c) => (
                               <div
                                 key={c.id}
                                 className="border border-slate-200 rounded-lg px-3 py-2 flex flex-col gap-1 bg-slate-50/60"
@@ -1400,26 +1411,12 @@ export default function Home() {
                                       Asset: <span className="font-mono">{c.asset_id}</span>
                                     </p>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeConcept(index)}
-                                    className="text-[10px] text-slate-400 hover:text-red-500"
-                                  >
-                                    Delete
-                                  </button>
                                 </div>
                                 {c.description && (
                                   <p className="text-[10px] text-slate-600 line-clamp-2">
                                     {c.description}
                                   </p>
                                 )}
-                                <button
-                                  type="button"
-                                  onClick={() => setRightTab('concepts')}
-                                  className="self-start mt-1 text-[10px] text-teal-600 hover:text-teal-700"
-                                >
-                                  Edit in Concepts canvas →
-                                </button>
                               </div>
                             ))}
                           </div>
@@ -1601,7 +1598,9 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {concepts.map((c, index) => (
+                      {concepts.map((c, index) => {
+                        const isOnMoodBoard = moodBoardConceptIds.includes(c.id);
+                        return (
                         <div
                           key={c.id}
                           className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-3"
@@ -1708,12 +1707,29 @@ export default function Home() {
                                 >
                                   {`Generate ${c.kind === 'video' ? 'video' : c.kind === 'copy' ? 'copy' : 'image'} prompt`}
                                 </button>
-                                {c.status === 'ready' && (
-                                  <span className="text-[11px] text-emerald-600">Prompt ready for production</span>
-                                )}
-                                {c.status === 'error' && (
-                                  <span className="text-[11px] text-red-500">Generation failed</span>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  {c.status === 'ready' && (
+                                    <span className="text-[11px] text-emerald-600">Prompt ready for production</span>
+                                  )}
+                                  {c.status === 'error' && (
+                                    <span className="text-[11px] text-red-500">Generation failed</span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setMoodBoardConceptIds((prev) =>
+                                        isOnMoodBoard ? prev.filter((id) => id !== c.id) : [...prev, c.id],
+                                      );
+                                    }}
+                                    className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                                      isOnMoodBoard
+                                        ? 'border-amber-500 text-amber-700 bg-amber-50'
+                                        : 'border-slate-200 text-slate-500 bg-white hover:border-amber-400 hover:text-amber-700'
+                                    }`}
+                                  >
+                                    {isOnMoodBoard ? 'Remove from concept board' : 'Add to concept board'}
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1727,7 +1743,98 @@ export default function Home() {
                             </button>
                           </div>
                         </div>
-                      ))}
+                      );
+                    })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {rightTab === 'moodboard' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Concept Board
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        A curated board of final concepts you’ve marked from the Concepts canvas.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRightTab('concepts')}
+                      className="text-[11px] px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
+                    >
+                      Manage concepts
+                    </button>
+                  </div>
+
+                  {moodBoardConceptIds.length === 0 || concepts.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 gap-3 mt-10">
+                      <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
+                        <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                            d="M3 7v10a2 2 0 002 2h14M3 7a2 2 0 012-2h7m-9 2l4 4m10-6l-3.172 3.172M21 7a2 2 0 00-2-2h-1.5M21 7l-4 4M10 5l2 2"
+                          />
+                        </svg>
+                      </div>
+                      <p className="text-sm max-w-xs">
+                        No concepts on the board yet. From the Concepts tab, use “Add to concept board” on any card to
+                        pin it here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {concepts
+                        .filter((c) => moodBoardConceptIds.includes(c.id))
+                        .map((c) => (
+                          <div
+                            key={c.id}
+                            className="relative bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-2"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-slate-900 truncate">
+                                  {c.title || 'Untitled concept'}
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  <span className="font-mono">{c.asset_id}</span>
+                                  {c.kind && (
+                                    <span className="ml-1 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 capitalize">
+                                      {c.kind}
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setMoodBoardConceptIds((prev) => prev.filter((id) => id !== c.id))
+                                }
+                                className="text-[10px] text-slate-400 hover:text-red-500"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            {c.description && (
+                              <p className="text-[11px] text-slate-600 line-clamp-3">{c.description}</p>
+                            )}
+                            {c.notes && (
+                              <p className="text-[10px] text-slate-400 line-clamp-2 border-t border-dashed border-slate-200 pt-1 mt-1">
+                                {c.notes}
+                              </p>
+                            )}
+                            {c.generatedPrompt && (
+                              <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">
+                                Prompt: <span className="text-slate-600">{c.generatedPrompt}</span>
+                              </p>
+                            )}
+                          </div>
+                        ))}
                     </div>
                   )}
                 </div>
