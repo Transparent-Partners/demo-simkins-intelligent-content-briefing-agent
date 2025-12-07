@@ -1003,8 +1003,8 @@ export default function Home() {
 
       {/* Main workspace row: left chat + right panel */}
       <div className="flex flex-1 overflow-hidden">
-        {/* LEFT: Chat Interface */}
-        {workspaceView !== 'matrix' && (
+        {/* LEFT: Chat Interface (Brief-only) */}
+        {workspaceView === 'brief' && (
           <div className="flex flex-col border-r border-gray-200 relative w-full md:w-1/2 md:max-w-1/2">
             {/* Chat Area */}
             <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-[#F8FAFC]">
@@ -1610,225 +1610,278 @@ export default function Home() {
                 </div>
               )}
 
-              {workspaceView === 'concepts' && (
-                <div className="space-y-4">
-                  {/* Top-level Concept Canvas toolbar */}
-                  <div className="flex flex-col gap-2 mb-2">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Concept Canvas</h3>
-                      <button
-                        onClick={addConcept}
-                        className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-teal-50 border border-teal-100"
-                      >
-                        + Add concept
-                      </button>
+              {workspaceView === 'concepts' && rightTab === 'builder' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* LEFT: Concept modules */}
+                  <div className="space-y-4">
+                    {/* Top-level Concept Canvas toolbar */}
+                    <div className="flex flex-col gap-2 mb-2">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Concept Canvas
+                        </h3>
+                        <button
+                          onClick={addConcept}
+                          className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-teal-50 border border-teal-100"
+                        >
+                          + Add concept
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => alert('DAM connection coming soon')}
+                          className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
+                        >
+                          Connect to DAM
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => alert('Brand assets integration coming soon')}
+                          className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
+                        >
+                          Add Brand Assets
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => alert('Brand voice loading coming soon')}
+                          className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
+                        >
+                          Load Brand Voice
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => alert('Brand style guide loading coming soon')}
+                          className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
+                        >
+                          Load Brand Style Guide
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => alert('DAM connection coming soon')}
-                        className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
-                      >
-                        Connect to DAM
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => alert('Brand assets integration coming soon')}
-                        className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
-                      >
-                        Add Brand Assets
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => alert('Brand voice loading coming soon')}
-                        className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
-                      >
-                        Load Brand Voice
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => alert('Brand style guide loading coming soon')}
-                        className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700 transition-colors"
-                      >
-                        Load Brand Style Guide
-                      </button>
-                    </div>
+
+                    {/* Canvas body: concept modules */}
+                    {concepts.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 gap-4 mt-12">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
+                          <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={1.5}
+                              d="M9 13h6m-3-3v6m7 1a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l4.414 4.414A1 1 0 0118 10.414V17z"
+                            />
+                          </svg>
+                        </div>
+                        <p className="text-sm max-w-[260px]">
+                          Start capturing modular creative concepts here. Link each concept to an asset or audience row
+                          from the matrix.
+                        </p>
+                        <button
+                          onClick={addConcept}
+                          className="mt-2 px-4 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-full border border-teal-100"
+                        >
+                          Add first concept
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {concepts.map((c, index) => {
+                          const isOnMoodBoard = moodBoardConceptIds.includes(c.id);
+                          return (
+                            <div
+                              key={c.id}
+                              className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-3"
+                            >
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div className="flex flex-col gap-2">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <input
+                                      className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                      placeholder="Concept title (e.g., Night Reset Ritual)"
+                                      value={c.title}
+                                      onChange={(e) => updateConceptField(index, 'title', e.target.value)}
+                                    />
+                                    <input
+                                      className="w-28 border border-gray-200 rounded px-2 py-1 text-[11px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                      placeholder="Asset ID"
+                                      value={c.asset_id}
+                                      onChange={(e) => updateConceptField(index, 'asset_id', e.target.value)}
+                                    />
+                                  </div>
+                                  <textarea
+                                    className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[72px]"
+                                    placeholder="Short narrative of the idea, hooks, and how it modularly recombines across channels."
+                                    value={c.description}
+                                    onChange={(e) => updateConceptField(index, 'description', e.target.value)}
+                                  />
+                                  <textarea
+                                    className="w-full border border-dashed border-gray-200 rounded px-2 py-1 text-[11px] text-slate-500 focus:outline-none focus:ring-1 focus:ring-teal-500/30 focus:border-teal-400 min-h-[48px]"
+                                    placeholder="Production notes / visual references (e.g., color language, motion cues, mandatory elements)."
+                                    value={c.notes}
+                                    onChange={(e) => updateConceptField(index, 'notes', e.target.value)}
+                                  />
+                                </div>
+                                <div className="flex flex-col gap-2 md:border-l md:border-slate-100 md:pl-3">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                                      AI asset prompt
+                                    </span>
+                                    <div className="inline-flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-1 py-0.5">
+                                      {(['image', 'copy', 'video'] as const).map((kind) => (
+                                        <button
+                                          key={kind}
+                                          type="button"
+                                          onClick={() => updateConceptField(index, 'kind', kind)}
+                                          className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                            (c.kind ?? 'image') === kind
+                                              ? 'bg-white text-slate-900 shadow-sm'
+                                              : 'text-slate-500 hover:text-slate-700'
+                                          }`}
+                                        >
+                                          {kind === 'image' ? 'Image' : kind === 'video' ? 'Video' : 'Copy'}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <textarea
+                                    className="w-full border border-gray-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[72px]"
+                                    placeholder="Optional: refine the prompt the system will send to generate this asset (image, copy, or video). If left blank, it will be built from the concept fields."
+                                    value={c.generatedPrompt ?? ''}
+                                    onChange={(e) =>
+                                      updateConceptField(index, 'generatedPrompt', e.target.value as any)
+                                    }
+                                  />
+                                  <div className="flex items-center justify-between">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const plan: any = previewPlan || {};
+                                        const lines: string[] = [];
+
+                                        if (plan.campaign_name) {
+                                          lines.push(`Campaign: ${plan.campaign_name}`);
+                                        }
+                                        if (plan.single_minded_proposition) {
+                                          lines.push(`Single-minded proposition: ${plan.single_minded_proposition}`);
+                                        }
+                                        if (plan.primary_audience) {
+                                          lines.push(`Primary audience: ${plan.primary_audience}`);
+                                        }
+                                        if (plan.brand_voice?.summary) {
+                                          lines.push(`Brand voice: ${plan.brand_voice.summary}`);
+                                        }
+
+                                        lines.push(`Concept title: ${c.title || 'Untitled concept'}`);
+                                        if (c.description) {
+                                          lines.push(`Concept description: ${c.description}`);
+                                        }
+                                        if (c.notes) {
+                                          lines.push(`Production notes: ${c.notes}`);
+                                        }
+
+                                        const prompt = lines.join('\n');
+                                        setConcepts((prev) =>
+                                          prev.map((existing, i) =>
+                                            i === index
+                                              ? {
+                                                  ...existing,
+                                                  status: 'ready',
+                                                  generatedPrompt: prompt,
+                                                }
+                                              : existing,
+                                          ),
+                                        );
+                                      }}
+                                      className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-teal-500 bg-teal-600 text-white hover:bg-teal-700"
+                                    >
+                                      {`Generate ${
+                                        c.kind === 'video' ? 'video' : c.kind === 'copy' ? 'copy' : 'image'
+                                      } prompt`}
+                                    </button>
+                                    <div className="flex items-center gap-2">
+                                      {c.status === 'ready' && (
+                                        <span className="text-[11px] text-emerald-600">Prompt ready for production</span>
+                                      )}
+                                      {c.status === 'error' && (
+                                        <span className="text-[11px] text-red-500">Generation failed</span>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setMoodBoardConceptIds((prev) =>
+                                            isOnMoodBoard ? prev.filter((id) => id !== c.id) : [...prev, c.id],
+                                          );
+                                        }}
+                                        className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                                          isOnMoodBoard
+                                            ? 'border-amber-500 text-amber-700 bg-amber-50'
+                                            : 'border-slate-200 text-slate-500 bg-white hover:border-amber-400 hover:text-amber-700'
+                                        }`}
+                                      >
+                                        {isOnMoodBoard ? 'Remove from concept board' : 'Add to concept board'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center pt-1">
+                                <span className="text-[11px] text-slate-400">{c.id}</span>
+                                <button
+                                  onClick={() => removeConcept(index)}
+                                  className="text-[11px] text-slate-400 hover:text-red-500"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Canvas body */}
-                  {concepts.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 gap-4 mt-12">
-                      <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
-                        <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={1.5}
-                            d="M9 13h6m-3-3v6m7 1a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l4.414 4.414A1 1 0 0118 10.414V17z"
-                          />
-                        </svg>
-                      </div>
-                      <p className="text-sm max-w-[260px]">
-                        Start capturing modular creative concepts here. Link each concept to an asset or audience row from the matrix.
+                  {/* RIGHT: Concept outputs */}
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Concept Outputs
+                    </h3>
+                    {concepts.length === 0 ? (
+                      <p className="text-[11px] text-slate-400">
+                        Outputs will appear here once you start adding concepts and generating prompts.
                       </p>
-                      <button
-                        onClick={addConcept}
-                        className="mt-2 px-4 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-full border border-teal-100"
-                      >
-                        Add first concept
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {concepts.map((c, index) => {
-                        const isOnMoodBoard = moodBoardConceptIds.includes(c.id);
-                        return (
-                        <div
-                          key={c.id}
-                          className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-3"
-                        >
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div className="flex flex-col gap-2">
-                              <div className="flex items-center justify-between gap-3">
-                                <input
-                                  className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                  placeholder="Concept title (e.g., Night Reset Ritual)"
-                                  value={c.title}
-                                  onChange={(e) => updateConceptField(index, 'title', e.target.value)}
-                                />
-                                <input
-                                  className="w-28 border border-gray-200 rounded px-2 py-1 text-[11px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                  placeholder="Asset ID"
-                                  value={c.asset_id}
-                                  onChange={(e) => updateConceptField(index, 'asset_id', e.target.value)}
-                                />
-                              </div>
-                              <textarea
-                                className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[72px]"
-                                placeholder="Short narrative of the idea, hooks, and how it modularly recombines across channels."
-                                value={c.description}
-                                onChange={(e) => updateConceptField(index, 'description', e.target.value)}
-                              />
-                              <textarea
-                                className="w-full border border-dashed border-gray-200 rounded px-2 py-1 text-[11px] text-slate-500 focus:outline-none focus:ring-1 focus:ring-teal-500/30 focus:border-teal-400 min-h-[48px]"
-                                placeholder="Production notes / visual references (e.g., color language, motion cues, mandatory elements)."
-                                value={c.notes}
-                                onChange={(e) => updateConceptField(index, 'notes', e.target.value)}
-                              />
-                            </div>
-                            <div className="flex flex-col gap-2 md:border-l md:border-slate-100 md:pl-3">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                                  AI asset prompt
-                                </span>
-                                <div className="inline-flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-1 py-0.5">
-                                  {(['image', 'copy', 'video'] as const).map((kind) => (
-                                    <button
-                                      key={kind}
-                                      type="button"
-                                      onClick={() => updateConceptField(index, 'kind', kind)}
-                                      className={`text-[10px] px-2 py-0.5 rounded-full ${
-                                        (c.kind ?? 'image') === kind
-                                          ? 'bg-white text-slate-900 shadow-sm'
-                                          : 'text-slate-500 hover:text-slate-700'
-                                      }`}
-                                    >
-                                      {kind === 'image' ? 'Image' : kind === 'video' ? 'Video' : 'Copy'}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                              <textarea
-                                className="w-full border border-gray-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[72px]"
-                                placeholder="Optional: refine the prompt the system will send to generate this asset (image, copy, or video). If left blank, it will be built from the concept fields."
-                                value={c.generatedPrompt ?? ''}
-                                onChange={(e) => updateConceptField(index, 'generatedPrompt', e.target.value as any)}
-                              />
-                              <div className="flex items-center justify-between">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const plan: any = previewPlan || {};
-                                    const lines: string[] = [];
-
-                                    if (plan.campaign_name) {
-                                      lines.push(`Campaign: ${plan.campaign_name}`);
-                                    }
-                                    if (plan.single_minded_proposition) {
-                                      lines.push(`Single-minded proposition: ${plan.single_minded_proposition}`);
-                                    }
-                                    if (plan.primary_audience) {
-                                      lines.push(`Primary audience: ${plan.primary_audience}`);
-                                    }
-                                    if (plan.brand_voice?.summary) {
-                                      lines.push(`Brand voice: ${plan.brand_voice.summary}`);
-                                    }
-
-                                    lines.push(`Concept title: ${c.title || 'Untitled concept'}`);
-                                    if (c.description) {
-                                      lines.push(`Concept description: ${c.description}`);
-                                    }
-                                    if (c.notes) {
-                                      lines.push(`Production notes: ${c.notes}`);
-                                    }
-
-                                    const prompt = lines.join('\n');
-                                    setConcepts((prev) =>
-                                      prev.map((existing, i) =>
-                                        i === index
-                                          ? {
-                                              ...existing,
-                                              status: 'ready',
-                                              generatedPrompt: prompt,
-                                            }
-                                          : existing,
-                                      ),
-                                    );
-                                  }}
-                                  className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-teal-500 bg-teal-600 text-white hover:bg-teal-700"
-                                >
-                                  {`Generate ${c.kind === 'video' ? 'video' : c.kind === 'copy' ? 'copy' : 'image'} prompt`}
-                                </button>
-                                <div className="flex items-center gap-2">
-                                  {c.status === 'ready' && (
-                                    <span className="text-[11px] text-emerald-600">Prompt ready for production</span>
+                    ) : (
+                      <div className="space-y-3">
+                        {concepts.map((c) => (
+                          <div
+                            key={c.id}
+                            className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col gap-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-semibold text-slate-900 truncate">
+                                  {c.title || 'Untitled concept'}
+                                </p>
+                                <p className="text-[10px] text-slate-500">
+                                  <span className="font-mono">{c.asset_id}</span>
+                                  {c.kind && (
+                                    <span className="ml-1 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 capitalize">
+                                      {c.kind}
+                                    </span>
                                   )}
-                                  {c.status === 'error' && (
-                                    <span className="text-[11px] text-red-500">Generation failed</span>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setMoodBoardConceptIds((prev) =>
-                                        isOnMoodBoard ? prev.filter((id) => id !== c.id) : [...prev, c.id],
-                                      );
-                                    }}
-                                    className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                                      isOnMoodBoard
-                                        ? 'border-amber-500 text-amber-700 bg-amber-50'
-                                        : 'border-slate-200 text-slate-500 bg-white hover:border-amber-400 hover:text-amber-700'
-                                    }`}
-                                  >
-                                    {isOnMoodBoard ? 'Remove from concept board' : 'Add to concept board'}
-                                  </button>
-                                </div>
+                                </p>
                               </div>
                             </div>
+                            <div className="border border-slate-100 rounded-lg bg-slate-50/60 px-2.5 py-2 min-h-[72px]">
+                              <p className="text-[11px] text-slate-600 whitespace-pre-wrap">
+                                {c.generatedPrompt ||
+                                  'No AI output yet. Use "Generate prompt" on the left to create an AI-ready description.'}
+                              </p>
+                            </div>
                           </div>
-                          <div className="flex justify-between items-center pt-1">
-                            <span className="text-[11px] text-slate-400">{c.id}</span>
-                            <button
-                              onClick={() => removeConcept(index)}
-                              className="text-[11px] text-slate-400 hover:text-red-500"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
