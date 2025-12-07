@@ -18,6 +18,148 @@ type MatrixRow = {
   variant: string;
 };
 
+type MatrixFieldKey =
+  | 'id'
+  | 'audience_segment'
+  | 'funnel_stage'
+  | 'trigger'
+  | 'channel'
+  | 'format'
+  | 'message'
+  | 'variant';
+
+const MATRIX_FIELDS: { key: MatrixFieldKey; label: string }[] = [
+  { key: 'id', label: 'Asset ID' },
+  { key: 'audience_segment', label: 'Audience' },
+  { key: 'funnel_stage', label: 'Stage' },
+  { key: 'trigger', label: 'Trigger' },
+  { key: 'channel', label: 'Channel' },
+  { key: 'format', label: 'Format' },
+  { key: 'message', label: 'Message' },
+  { key: 'variant', label: 'Variant' },
+];
+
+type ContentMatrixTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  rows: MatrixRow[];
+};
+
+const INITIAL_MATRIX_LIBRARY: ContentMatrixTemplate[] = [
+  {
+    id: 'MTX-001',
+    name: 'Aurora Sleep OS – Always-on funnel',
+    description: 'Top/mid/bottom-funnel structure for a modular wellness subscription.',
+    rows: [
+      {
+        id: 'VID-001',
+        audience_segment: 'Broad prospects',
+        funnel_stage: 'Awareness',
+        trigger: 'Always on',
+        channel: 'Meta Reels',
+        format: '9:16 Video',
+        message: 'Before / after story of wired-and-tired professional discovering Sleep OS.',
+        variant: 'Emotional pain point',
+      },
+      {
+        id: 'VID-002',
+        audience_segment: 'High-intent site visitors',
+        funnel_stage: 'Consideration',
+        trigger: 'Visited pricing page',
+        channel: 'YouTube In-Stream',
+        format: '16:9 Video',
+        message: 'Explainer on how scenes, routines, and data tie together in 7 days.',
+        variant: 'Mechanics / proof',
+      },
+      {
+        id: 'IMG-001',
+        audience_segment: 'Trial starters',
+        funnel_stage: 'Conversion',
+        trigger: 'Started trial, no routine created',
+        channel: 'CRM Email',
+        format: 'Hero image + modules',
+        message: 'Nudge to build first “Night Reset” routine with simple steps.',
+        variant: 'Onboarding assist',
+      },
+    ],
+  },
+  {
+    id: 'MTX-002',
+    name: 'VoltCharge Go – B2B demand gen',
+    description: 'Role-based matrix for HR, Facilities, and Finance leads.',
+    rows: [
+      {
+        id: 'CAR-001',
+        audience_segment: 'HR leaders',
+        funnel_stage: 'Awareness',
+        trigger: 'Matched to HR persona',
+        channel: 'LinkedIn Feed',
+        format: 'Carousel',
+        message: 'Reframing parking as part of the benefits stack with employee vignettes.',
+        variant: 'Benefits story',
+      },
+      {
+        id: 'CAR-002',
+        audience_segment: 'Facilities leaders',
+        funnel_stage: 'Consideration',
+        trigger: 'Visited solutions page',
+        channel: 'LinkedIn Feed',
+        format: 'Carousel',
+        message: 'Operational simplicity, uptime guarantees, and site rollout playbook.',
+        variant: 'Operations / proof',
+      },
+      {
+        id: 'PDF-001',
+        audience_segment: 'Buying committee',
+        funnel_stage: 'Decision',
+        trigger: 'Requested demo',
+        channel: 'Sales enablement',
+        format: '1-pager PDF',
+        message: 'Shared economic case and KPI grid by role (HR, Facilities, Finance).',
+        variant: 'Business case',
+      },
+    ],
+  },
+  {
+    id: 'MTX-003',
+    name: 'HarvestBox – Multi-family resident journey',
+    description: 'Resident moments across awareness, move-in, and retention.',
+    rows: [
+      {
+        id: 'VID-101',
+        audience_segment: 'Prospective residents',
+        funnel_stage: 'Awareness',
+        trigger: 'Geo-targeted near property',
+        channel: 'Short-form video',
+        format: '9:16 Video',
+        message: 'Week-in-the-life of residents using micro-market for real moments.',
+        variant: 'Lifestyle montage',
+      },
+      {
+        id: 'IMG-201',
+        audience_segment: 'New move-ins',
+        funnel_stage: 'Onboarding',
+        trigger: 'Move-in date',
+        channel: 'Welcome email',
+        format: 'Hero image + secondary tiles',
+        message: 'Orientation to micro-market, hours, and building-specific perks.',
+        variant: 'Welcome / orientation',
+      },
+      {
+        id: 'IMG-301',
+        audience_segment: 'Long-term residents',
+        funnel_stage: 'Retention',
+        trigger: '12+ months tenure',
+        channel: 'In-building signage',
+        format: 'Poster',
+        message: 'Celebrate favorite resident moments and new seasonal offerings.',
+        variant: 'Community / loyalty',
+      },
+    ],
+  },
+];
+
 type HistoricalBrief = {
   id: string;
   campaign_name: string;
@@ -239,6 +381,12 @@ export default function Home() {
   const [splitRatio, setSplitRatio] = useState(0.6); // left pane width in split view
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
   const [rightTab, setRightTab] = useState<'matrix' | 'concepts'>('matrix');
+  const [visibleMatrixFields, setVisibleMatrixFields] = useState<MatrixFieldKey[]>(
+    ['id', 'audience_segment', 'funnel_stage', 'trigger', 'channel', 'format', 'message', 'variant'],
+  );
+  const [showMatrixFieldConfig, setShowMatrixFieldConfig] = useState(false);
+  const [showMatrixLibrary, setShowMatrixLibrary] = useState(false);
+  const [matrixLibrary, setMatrixLibrary] = useState<ContentMatrixTemplate[]>(INITIAL_MATRIX_LIBRARY);
 
   // This would eventually be live-updated from the backend
   const [previewPlan, setPreviewPlan] = useState<any>({ content_matrix: [] }); 
@@ -528,7 +676,7 @@ export default function Home() {
     setMatrixRows((rows) => rows.filter((_, i) => i !== index));
   }
 
-  function addConcept(kind?: 'image' | 'video' | 'copy') {
+  function addConcept() {
     const defaultAssetId = matrixRows[0]?.id || `AST-${concepts.length + 1}`;
     setConcepts((prev) => [
       ...prev,
@@ -538,7 +686,8 @@ export default function Home() {
         title: '',
         description: '',
         notes: '',
-        kind,
+        // kind can be set later via the toggle controls in the Concept Canvas
+        kind: undefined,
         status: 'idle',
       },
     ]);
@@ -552,6 +701,55 @@ export default function Home() {
 
   function removeConcept(index: number) {
     setConcepts((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function toggleMatrixField(key: MatrixFieldKey) {
+    setVisibleMatrixFields((prev) => {
+      const exists = prev.includes(key);
+      if (exists) {
+        // Always keep at least one column visible
+        if (prev.length === 1) return prev;
+        return prev.filter((k) => k !== key);
+      }
+      return [...prev, key];
+    });
+  }
+
+  function applyMatrixTemplate(templateId: string) {
+    const template = matrixLibrary.find((t) => t.id === templateId);
+    if (!template) return;
+    setMatrixRows(template.rows);
+    setShowMatrixLibrary(false);
+  }
+
+  function deleteMatrixTemplate(templateId: string) {
+    setMatrixLibrary((prev) => prev.filter((t) => t.id !== templateId));
+  }
+
+  function saveCurrentMatrixToLibrary() {
+    if (!matrixRows.length) {
+      alert('Add at least one row to the content matrix before saving to the library.');
+      return;
+    }
+    const name = window.prompt('Name this content matrix template:', 'New Content Matrix');
+    if (!name) return;
+
+    const description =
+      'Saved from current workspace. Rows: ' +
+      matrixRows.length +
+      (previewPlan?.campaign_name ? ` | Campaign: ${previewPlan.campaign_name}` : '');
+
+    const nextId = `MTX-${(matrixLibrary.length + 1).toString().padStart(3, '0')}`;
+    setMatrixLibrary((prev) => [
+      ...prev,
+      {
+        id: nextId,
+        name,
+        description,
+        rows: matrixRows,
+      },
+    ]);
+    setShowMatrixLibrary(true);
   }
 
   return (
@@ -734,7 +932,8 @@ export default function Home() {
         {/* Sample Brief Modal Overlay */}
         {showSample && (
             <div className="absolute inset-0 bg-white/98 backdrop-blur-md z-20 flex flex-col animate-in fade-in duration-200">
-                <div className="flex justify-between items-center px-8 py-6 border-b border-gray-100">
+                {/* Sticky header so the close button is always visible */}
+                <div className="flex justify-between items-center px-8 py-6 border-b border-gray-100 bg-white/95 backdrop-blur-md sticky top-0 z-10">
                     <div>
                         <h2 className="text-xl font-bold text-slate-800">Sample Output: "Summer Glow 2024"</h2>
                         <p className="text-sm text-slate-500">This is what a completed Master Plan looks like.</p>
@@ -821,7 +1020,8 @@ export default function Home() {
         {/* Historical Brief Library Modal */}
         {showLibrary && (
           <div className="absolute inset-0 bg-white/98 backdrop-blur-md z-30 flex flex-col">
-            <div className="flex justify-between items-center px-8 py-6 border-b border-gray-100">
+            {/* Sticky header so the close button is always visible */}
+            <div className="flex justify-between items-center px-8 py-6 border-b border-gray-100 bg-white/95 backdrop-blur-md sticky top-0 z-10">
               <div>
                 <h2 className="text-xl font-bold text-slate-800">Historical Intelligent Content Briefs</h2>
                 <p className="text-sm text-slate-500">
@@ -983,7 +1183,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex-1 p-6 overflow-y-auto bg-slate-50/30">
+          <div className="flex-1 p-6 overflow-y-auto bg-slate-50/30 relative">
             <div className="space-y-6">
               {rightTab === 'matrix' && (
                 <>
@@ -1012,7 +1212,25 @@ export default function Home() {
                   ) : (
                     <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                       <div className="flex justify-between items-center mb-3">
-                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Content Matrix</h3>
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            Content Matrix
+                          </h3>
+                          <button
+                            type="button"
+                            onClick={() => setShowMatrixFieldConfig((prev) => !prev)}
+                            className="text-[11px] px-2 py-1 rounded-full border border-slate-200 text-slate-500 hover:text-teal-700 hover:border-teal-300 bg-white"
+                          >
+                            Customize columns
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowMatrixLibrary(true)}
+                            className="text-[11px] px-2 py-1 rounded-full border border-slate-200 text-slate-500 hover:text-teal-700 hover:border-teal-300 bg-white"
+                          >
+                            Matrix Library
+                          </button>
+                        </div>
                         <button
                           onClick={addMatrixRow}
                           className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-teal-50 border border-teal-100"
@@ -1020,35 +1238,58 @@ export default function Home() {
                           + Add row
                         </button>
                       </div>
+                      {showMatrixFieldConfig && (
+                        <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                          <p className="text-[11px] font-medium text-slate-500 mb-1">
+                            Show / hide columns
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {MATRIX_FIELDS.map((field) => {
+                              const checked = visibleMatrixFields.includes(field.key);
+                              return (
+                                <button
+                                  key={field.key}
+                                  type="button"
+                                  onClick={() => toggleMatrixField(field.key)}
+                                  className={`px-2.5 py-1 text-[11px] rounded-full border ${
+                                    checked
+                                      ? 'bg-white border-teal-500 text-teal-700 shadow-sm'
+                                      : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  {field.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs text-left">
                           <thead className="bg-slate-50 text-slate-500">
                             <tr>
-                              <th className="px-2 py-2">Asset ID</th>
-                              <th className="px-2 py-2">Audience</th>
-                              <th className="px-2 py-2">Stage</th>
-                              <th className="px-2 py-2">Trigger</th>
-                              <th className="px-2 py-2">Channel</th>
-                              <th className="px-2 py-2">Format</th>
-                              <th className="px-2 py-2">Message</th>
-                              <th className="px-2 py-2">Variant</th>
+                              {MATRIX_FIELDS.filter((f) => visibleMatrixFields.includes(f.key)).map((field) => (
+                                <th key={field.key} className="px-2 py-2">
+                                  {field.label}
+                                </th>
+                              ))}
                               <th className="px-2 py-2"></th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
                             {matrixRows.map((row, index) => (
                               <tr key={index} className="align-top">
-                                {(['id', 'audience_segment', 'funnel_stage', 'trigger', 'channel', 'format', 'message', 'variant'] as const).map(
-                                  (field) => (
-                                    <td key={field} className="px-2 py-1">
-                                      <input
-                                        value={row[field]}
-                                        onChange={(e) => updateMatrixCell(index, field, e.target.value)}
-                                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                      />
-                                    </td>
-                                  ),
-                                )}
+                                {MATRIX_FIELDS.filter((f) => visibleMatrixFields.includes(f.key)).map((field) => (
+                                  <td key={field.key} className="px-2 py-1">
+                                    <input
+                                      value={row[field.key]}
+                                      onChange={(e) =>
+                                        updateMatrixCell(index, field.key as MatrixFieldKey, e.target.value)
+                                      }
+                                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    />
+                                  </td>
+                                ))}
                                 <td className="px-2 py-1 text-right">
                                   <button
                                     onClick={() => removeMatrixRow(index)}
@@ -1065,6 +1306,104 @@ export default function Home() {
                     </div>
                   )}
                 </>
+              )}
+
+              {showMatrixLibrary && (
+                <div className="absolute inset-0 bg-white/98 backdrop-blur-md z-30 flex flex-col">
+                  {/* Sticky header so the close button is always visible */}
+                  <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-white/95 backdrop-blur-md sticky top-0 z-10">
+                    <div>
+                      <h2 className="text-sm font-semibold text-slate-800">Content Matrix Library</h2>
+                      <p className="text-[11px] text-slate-500">
+                        Save and reuse structured content matrices across campaigns.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={saveCurrentMatrixToLibrary}
+                        className="text-[11px] px-3 py-1.5 rounded-full border border-teal-500 text-teal-700 bg-teal-50 hover:bg-teal-100"
+                      >
+                        Save current matrix
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowMatrixLibrary(false)}
+                        className="p-2 hover:bg-gray-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+                    {matrixLibrary.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 gap-3">
+                        <p className="text-sm max-w-xs">
+                          No saved content matrices yet. Build a grid and click &quot;Save current matrix&quot; to add one.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-5xl mx-auto">
+                        {matrixLibrary.map((template) => (
+                          <div
+                            key={template.id}
+                            className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-sm font-semibold text-slate-900">{template.name}</h3>
+                                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                                  {template.id}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-600">{template.description}</p>
+                              <div className="bg-slate-50 rounded-lg border border-slate-100 p-2">
+                                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                                  Preview rows
+                                </p>
+                                <div className="space-y-1 max-h-24 overflow-y-auto">
+                                  {template.rows.slice(0, 4).map((row) => (
+                                    <div key={row.id} className="text-[11px] text-slate-600">
+                                      <span className="font-mono text-slate-500 mr-1">{row.id}</span>
+                                      <span>{row.audience_segment || 'Audience N/A'}</span>
+                                      <span className="mx-1 text-slate-400">·</span>
+                                      <span>{row.funnel_stage || 'Stage N/A'}</span>
+                                      <span className="mx-1 text-slate-400">·</span>
+                                      <span>{row.channel || 'Channel N/A'}</span>
+                                    </div>
+                                  ))}
+                                  {template.rows.length > 4 && (
+                                    <div className="text-[10px] text-slate-400">
+                                      + {template.rows.length - 4} more row(s)
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-3 flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={() => applyMatrixTemplate(template.id)}
+                                className="text-[11px] px-3 py-1.5 rounded-full bg-teal-600 text-white hover:bg-teal-700"
+                              >
+                                Apply to workspace
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteMatrixTemplate(template.id)}
+                                className="text-[11px] text-slate-400 hover:text-red-500"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
 
               {rightTab === 'concepts' && (
@@ -1273,6 +1612,9 @@ export default function Home() {
         </div>
       </>
       )}
+
+      {/* Close main workspace row container */}
+      </div>
 
     </main>
   );
