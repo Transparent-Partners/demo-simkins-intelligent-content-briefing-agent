@@ -1005,13 +1005,7 @@ export default function Home() {
       <div className="flex flex-1 overflow-hidden">
         {/* LEFT: Chat Interface */}
         {workspaceView !== 'matrix' && (
-          <div
-            className={`flex flex-col border-r border-gray-200 relative ${
-              workspaceView === 'brief'
-                ? 'w-full md:w-1/2 md:max-w-1/2'
-                : 'shrink-0'
-            }`}
-          >
+          <div className="flex flex-col border-r border-gray-200 relative w-full md:w-1/2 md:max-w-1/2">
             {/* Chat Area */}
             <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-[#F8FAFC]">
           {messages.map((msg, idx) => (
