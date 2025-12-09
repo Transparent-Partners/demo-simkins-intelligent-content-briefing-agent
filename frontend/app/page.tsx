@@ -576,7 +576,7 @@ export default function Home() {
   const [selectedAsset, setSelectedAsset] = useState<ProductionAsset | null>(null);
   const [feedFields, setFeedFields] = useState<FeedFieldConfig[]>(BASE_FEED_FIELDS);
   const [visibleFeedFields, setVisibleFeedFields] = useState<FeedFieldKey[]>(
-    BASE_FEED_FIELDS.map((f) => f.key),
+    BASE_FEED_FIELDS.map((f) => f.key).filter((key) => key !== 'date_start' && key !== 'date_end'),
   );
   const [showFeedFieldConfig, setShowFeedFieldConfig] = useState(false);
   const [feedRows, setFeedRows] = useState<FeedRow[]>([]);
