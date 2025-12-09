@@ -8,6 +8,7 @@ from app.api.matrix_routes import router as matrix_router
 from app.api.concept_routes import router as concept_router
 from app.api.spec_routes import router as spec_router
 from app.api.production_routes import router as production_router
+from app.schemas.feed import AssetFeedRow
 from fastapi.middleware.cors import CORSMiddleware
 import aiofiles
 import os
@@ -61,13 +62,6 @@ class GenerateAssetResponse(BaseModel):
     asset_url: Optional[str] = None
 
 
-class DCOFeedRow(BaseModel):
-  Unique_ID: str
-  Headline: str
-  Image_URL: str
-  Exit_URL: str
-
-
 class GenerateFeedRequest(BaseModel):
     audience_strategy: List[Dict[str, Any]]
     asset_list: List[Dict[str, Any]]
@@ -75,7 +69,7 @@ class GenerateFeedRequest(BaseModel):
 
 
 class GenerateFeedResponse(BaseModel):
-    feed: List[DCOFeedRow]
+    feed: List[AssetFeedRow]
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
@@ -134,7 +128,7 @@ async def generate_feed(request: GenerateFeedRequest) -> GenerateFeedResponse:
             asset_list=request.asset_list,
             media_plan_rows=request.media_plan_rows,
         )
-        return GenerateFeedResponse(feed=[DCOFeedRow(**row) for row in feed_rows])
+        return GenerateFeedResponse(feed=feed_rows)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

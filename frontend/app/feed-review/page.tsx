@@ -4,10 +4,32 @@ import { useState } from 'react';
 import { MediaContext, MediaPlanRow, MediaPlanUploader } from '../components/MediaPlanUploader';
 
 type FeedRow = {
-  Unique_ID: string;
-  Headline: string;
-  Image_URL: string;
-  Exit_URL: string;
+  row_id: string;
+  creative_filename: string;
+  reporting_label: string;
+  is_default: boolean;
+  asset_slot_a_path?: string | null;
+  asset_slot_b_path?: string | null;
+  asset_slot_c_path?: string | null;
+  logo_asset_path?: string | null;
+  copy_slot_a_text?: string | null;
+  copy_slot_b_text?: string | null;
+  copy_slot_c_text?: string | null;
+  legal_disclaimer_text?: string | null;
+  cta_button_text?: string | null;
+  font_color_hex?: string | null;
+  cta_bg_color_hex?: string | null;
+  background_color_hex?: string | null;
+  platform_id: string;
+  placement_dimension: string;
+  asset_format_type: string;
+  audience_id?: string | null;
+  geo_targeting?: string | null;
+  date_start?: string | null;
+  date_end?: string | null;
+  trigger_condition?: string | null;
+  destination_url?: string | null;
+  utm_suffix?: string | null;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -73,9 +95,42 @@ export default function FeedReviewPage() {
     }
   };
 
+  const updateFeedCell = (index: number, key: keyof FeedRow, value: string) => {
+    setFeed((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [key]: value } : row)),
+    );
+  };
+
   const handleExportCsv = () => {
     if (!feed.length) return;
-    const headers = ['Unique_ID', 'Headline', 'Image_URL', 'Exit_URL'];
+    const headers = [
+      'row_id',
+      'creative_filename',
+      'reporting_label',
+      'is_default',
+      'asset_slot_a_path',
+      'asset_slot_b_path',
+      'asset_slot_c_path',
+      'logo_asset_path',
+      'copy_slot_a_text',
+      'copy_slot_b_text',
+      'copy_slot_c_text',
+      'legal_disclaimer_text',
+      'cta_button_text',
+      'font_color_hex',
+      'cta_bg_color_hex',
+      'background_color_hex',
+      'platform_id',
+      'placement_dimension',
+      'asset_format_type',
+      'audience_id',
+      'geo_targeting',
+      'date_start',
+      'date_end',
+      'trigger_condition',
+      'destination_url',
+      'utm_suffix',
+    ];
     const rows = feed.map((r) => headers.map((h) => (r as any)[h] ?? '').join(','));
     const csv = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -98,9 +153,9 @@ export default function FeedReviewPage() {
           plan: {
             campaign_name: 'DCO Feed – Production Brief',
             bill_of_materials: feed.map((row) => ({
-              asset_id: row.Unique_ID,
-              concept: row.Headline,
-              format: 'Dynamic creative',
+              asset_id: row.creative_filename,
+              concept: row.reporting_label,
+              format: row.asset_format_type,
             })),
           },
         }),
@@ -187,33 +242,69 @@ export default function FeedReviewPage() {
               <thead className="bg-slate-50 sticky top-0 z-10">
                 <tr>
                   <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
-                    Unique ID
+                    Row ID
                   </th>
                   <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
-                    Headline
+                    Creative Filename
                   </th>
                   <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
-                    Image URL
+                    Reporting Label
                   </th>
                   <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
-                    Exit URL
+                    Platform / Dimension
+                  </th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
+                    Asset Type
+                  </th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
+                    Destination URL
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {feed.map((row) => (
-                  <tr key={row.Unique_ID} className="odd:bg-white even:bg-slate-50/40">
+                {feed.map((row, index) => (
+                  <tr key={row.row_id} className="odd:bg-white even:bg-slate-50/40">
                     <td className="px-3 py-2 border-b border-slate-100 font-mono text-slate-700">
-                      {row.Unique_ID}
+                      {row.row_id}
                     </td>
-                    <td className="px-3 py-2 border-b border-slate-100 text-slate-700">
-                      {row.Headline}
+                    <td className="px-3 py-2 border-b border-slate-100">
+                      <input
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                        value={row.creative_filename}
+                        onChange={(e) => updateFeedCell(index, 'creative_filename', e.target.value)}
+                      />
                     </td>
-                    <td className="px-3 py-2 border-b border-slate-100 text-slate-500">
-                      {row.Image_URL}
+                    <td className="px-3 py-2 border-b border-slate-100">
+                      <input
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                        value={row.reporting_label}
+                        onChange={(e) => updateFeedCell(index, 'reporting_label', e.target.value)}
+                      />
                     </td>
-                    <td className="px-3 py-2 border-b border-slate-100 text-slate-500">
-                      {row.Exit_URL}
+                    <td className="px-3 py-2 border-b border-slate-100">
+                      <input
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                        value={row.platform_id + ' · ' + row.placement_dimension}
+                        onChange={(e) => {
+                          const [platformPart, dimensionPart] = e.target.value.split('·').map((s) => s.trim());
+                          updateFeedCell(index, 'platform_id', platformPart || '');
+                          updateFeedCell(index, 'placement_dimension', dimensionPart || '');
+                        }}
+                      />
+                    </td>
+                    <td className="px-3 py-2 border-b border-slate-100">
+                      <input
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                        value={row.asset_format_type}
+                        onChange={(e) => updateFeedCell(index, 'asset_format_type', e.target.value)}
+                      />
+                    </td>
+                    <td className="px-3 py-2 border-b border-slate-100">
+                      <input
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                        value={row.destination_url ?? ''}
+                        onChange={(e) => updateFeedCell(index, 'destination_url', e.target.value)}
+                      />
                     </td>
                   </tr>
                 ))}

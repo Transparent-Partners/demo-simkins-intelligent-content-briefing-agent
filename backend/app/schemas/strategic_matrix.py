@@ -11,7 +11,7 @@ class StrategicMatrixRow(BaseModel):
 
     # --- 1. IDENTITY BLOCK (The "Who") ---
 
-    segment_source_type: str = Field(
+    segment_source: str = Field(
         ...,
         description=(
             "Source of the audience (e.g., '1st Party (CRM/Email List)', "

@@ -26,37 +26,49 @@ type MatrixFieldConfig = {
 
 // Strategic Matrix defaults
 const PRIMARY_MATRIX_KEYS: MatrixFieldKey[] = [
+  'segment_source',
   'segment_id',
-  'context_trigger',
-  'psych_driver',
-  'buying_barrier',
-  'visual_archetype',
-  'messaging_angle',
+  'segment_name',
+  'segment_size',
+  'priority_level',
+  'segment_description',
+  'key_insight',
+  'current_perception',
+  'desired_perception',
+  'primary_message_pillar',
+  'call_to_action_objective',
+  'tone_guardrails',
 ];
 
 const EXECUTION_MATRIX_KEYS: MatrixFieldKey[] = [
-  'channel',
-  'format_type',
-  'dynamic_elements',
-  'variant_label',
+  'platform_environments',
+  'contextual_triggers',
 ];
 
 const SYSTEM_MATRIX_KEYS: MatrixFieldKey[] = ['asset_id', 'specs_lookup_key', 'notes'];
 
 const BASE_MATRIX_FIELDS: MatrixFieldConfig[] = [
-  // PRIMARY FIELDS
+  // PRIMARY FIELDS – Identity Block
+  { key: 'segment_source', label: 'Segment Source' },
   { key: 'segment_id', label: 'Segment ID' },
-  { key: 'context_trigger', label: 'Context Trigger' },
-  { key: 'psych_driver', label: 'Psych Driver' },
-  { key: 'buying_barrier', label: 'Buying Barrier' },
-  { key: 'visual_archetype', label: 'Visual Archetype' },
-  { key: 'messaging_angle', label: 'Messaging Angle' },
+  { key: 'segment_name', label: 'Segment Name' },
+  { key: 'segment_size', label: 'Segment Size' },
+  { key: 'priority_level', label: 'Priority Level' },
 
-  // EXECUTION FIELDS
-  { key: 'channel', label: 'Channel' },
-  { key: 'format_type', label: 'Format Type' },
-  { key: 'dynamic_elements', label: 'Dynamic Elements' },
-  { key: 'variant_label', label: 'Variant Label' },
+  // Strategic Core
+  { key: 'segment_description', label: 'Segment Description' },
+  { key: 'key_insight', label: 'Key Insight' },
+  { key: 'current_perception', label: 'Current Perception' },
+  { key: 'desired_perception', label: 'Desired Perception' },
+
+  // Message Architecture
+  { key: 'primary_message_pillar', label: 'Primary Message Pillar' },
+  { key: 'call_to_action_objective', label: 'CTA Objective' },
+  { key: 'tone_guardrails', label: 'Tone Guardrails' },
+
+  // Channel & Format Selection
+  { key: 'platform_environments', label: 'Platform Environments' },
+  { key: 'contextual_triggers', label: 'Contextual Triggers' },
 
   // SYSTEM FIELDS (initially hidden in UI)
   { key: 'asset_id', label: 'Asset ID' },
@@ -930,7 +942,7 @@ export default function Home() {
       .filter(Boolean);
 
     const strategyPayload = {
-      segment_source_type: strategyRow.segment_source_type || '1st Party (CRM/Email List)',
+      segment_source: strategyRow.segment_source || '1st Party (CRM)',
       segment_id: strategyRow.segment_id || 'SEG-DEMO',
       segment_name: strategyRow.segment_name || 'Demo Segment',
       segment_size: strategyRow.segment_size || '',
@@ -2366,7 +2378,9 @@ export default function Home() {
                       </p>
                     ) : (
                       <div className="space-y-3">
-                        {concepts.map((c) => (
+                        {concepts.map((c) => {
+                          const isOnMoodBoard = moodBoardConceptIds.includes(c.id);
+                          return (
                           <div
                             key={c.id}
                             className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col gap-2"
@@ -2385,6 +2399,21 @@ export default function Home() {
                                   )}
                                 </p>
                               </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setMoodBoardConceptIds((prev) =>
+                                    isOnMoodBoard ? prev.filter((id) => id !== c.id) : [...prev, c.id],
+                                  )
+                                }
+                                className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                                  isOnMoodBoard
+                                    ? 'border-amber-500 text-amber-700 bg-amber-50'
+                                    : 'border-slate-200 text-slate-500 bg-white hover:border-amber-400 hover:text-amber-700'
+                                }`}
+                              >
+                                {isOnMoodBoard ? 'On concept board' : 'Add to concept board'}
+                              </button>
                             </div>
                             <div className="border border-slate-100 rounded-lg bg-slate-50/60 px-2.5 py-2 min-h-[72px]">
                               <p className="text-[11px] text-slate-600 whitespace-pre-wrap">
@@ -2393,7 +2422,8 @@ export default function Home() {
                               </p>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

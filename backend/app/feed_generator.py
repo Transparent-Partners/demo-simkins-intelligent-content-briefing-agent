@@ -1,4 +1,7 @@
 from typing import List, Dict, Any
+from uuid import uuid4
+
+from app.schemas.feed import AssetFeedRow
 
 
 def _normalise_key(name: str) -> str:
@@ -10,7 +13,7 @@ def generate_dco_feed(
     audience_strategy: List[Dict[str, Any]],
     asset_list: List[Dict[str, Any]],
     media_plan_rows: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+) -> List[AssetFeedRow]:
     """
     Generate a simple DCO feed that connects strategy + concepts + media.
 
@@ -46,7 +49,7 @@ def generate_dco_feed(
             continue
         assets_by_audience[_normalise_key(audience)] = a
 
-    feed: List[Dict[str, Any]] = []
+    feed: List[AssetFeedRow] = []
 
     for idx, row in enumerate(media_plan_rows):
         # Try a couple of common audience column names
@@ -87,20 +90,81 @@ def generate_dco_feed(
             or ""
         )
 
-        unique_id = (
-            row.get("Unique_ID")
-            or row.get("Placement ID")
-            or row.get("placement_id")
-            or f"ROW-{idx+1}"
+        # Identity & taxonomy
+        row_id = str(uuid4())
+
+        # Simple creative taxonomy slug
+        base_concept = (strategy.get("concept_slug") or strategy.get("audience") or audience or "Concept").replace(
+            " ", ""
+        )
+        msg_slug = (headline or "Message").replace(" ", "")
+        dimension = row.get("Size") or row.get("Dimension") or ""
+        fmt = row.get("Format") or "DC"
+        creative_filename = f"{base_concept}_{msg_slug}_{dimension or 'NA'}_{fmt}_v1"
+
+        reporting_label = f"Audience: {audience or 'N/A'} | Msg: {headline or 'N/A'}"
+
+        # Visual & copy slots
+        asset_slot_a_path = image_url or exit_url or ""
+        asset_slot_b_path = ""
+        asset_slot_c_path = ""
+
+        copy_slot_a_text = headline or ""
+        copy_slot_b_text = strategy.get("subhead") or ""
+        copy_slot_c_text = strategy.get("cta_copy") or ""
+
+        # Style defaults (can be overridden later)
+        cta_button_text = strategy.get("cta_label") or "Learn More"
+        font_color_hex = "#FFFFFF"
+        cta_bg_color_hex = "#14b8a6"
+        background_color_hex = "#020617"
+
+        # Technical specs – best-effort from media row
+        platform_id = row.get("Platform") or "META"
+        placement_dimension = dimension or row.get("Placement") or ""
+        asset_format_type = (
+            row.get("Asset_Type")
+            or asset.get("asset_type")
+            or ("VIDEO" if "video" in (fmt or "").lower() else "STATIC")
         )
 
+        # Targeting
+        audience_id = audience if isinstance(audience, str) else None
+        geo_targeting = row.get("Geo") or ""
+        trigger_condition = row.get("Trigger") or ""
+
+        destination_url = exit_url or ""
+        utm_suffix = row.get("UTM") or ""
+
         feed.append(
-            {
-                "Unique_ID": str(unique_id),
-                "Headline": str(headline) if headline is not None else "",
-                "Image_URL": str(image_url) if image_url is not None else "",
-                "Exit_URL": str(exit_url) if exit_url is not None else "",
-            }
+            AssetFeedRow(
+                row_id=row_id,
+                creative_filename=creative_filename,
+                reporting_label=reporting_label,
+                is_default=(idx == 0),
+                asset_slot_a_path=asset_slot_a_path,
+                asset_slot_b_path=asset_slot_b_path,
+                asset_slot_c_path=asset_slot_c_path,
+                logo_asset_path=None,
+                copy_slot_a_text=copy_slot_a_text,
+                copy_slot_b_text=copy_slot_b_text,
+                copy_slot_c_text=copy_slot_c_text,
+                legal_disclaimer_text=strategy.get("legal_disclaimer") or "",
+                cta_button_text=cta_button_text,
+                font_color_hex=font_color_hex,
+                cta_bg_color_hex=cta_bg_color_hex,
+                background_color_hex=background_color_hex,
+                platform_id=str(platform_id),
+                placement_dimension=str(placement_dimension),
+                asset_format_type=str(asset_format_type),
+                audience_id=audience_id,
+                geo_targeting=str(geo_targeting),
+                date_start=str(row.get("Start_Date") or ""),
+                date_end=str(row.get("End_Date") or ""),
+                trigger_condition=str(trigger_condition),
+                destination_url=str(destination_url),
+                utm_suffix=str(utm_suffix),
+            )
         )
 
     return feed
