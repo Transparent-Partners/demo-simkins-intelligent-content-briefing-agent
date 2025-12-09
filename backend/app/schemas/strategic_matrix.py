@@ -1,90 +1,120 @@
-from typing import List, Dict
+from typing import List
 
 from pydantic import BaseModel, Field
-from typing_extensions import Literal
 
 
 class StrategicMatrixRow(BaseModel):
     """
-    A single row in the Decision Table.
-    Maps WHO (Signal) -> WHY (Strategy) -> WHAT (Creative Directive).
+    One 'Strategy Card' for an audience segment.
+    Defines WHO they are, WHY they matter, and WHAT we should say.
     """
 
-    # --- SECTION A: THE SIGNAL (Who & When) ---
-    # These fields define the "IF" condition for the DCO logic.
+    # --- 1. IDENTITY BLOCK (The "Who") ---
+
+    segment_source_type: str = Field(
+        ...,
+        description=(
+            "Source of the audience (e.g., '1st Party (CRM/Email List)', "
+            "'Retargeting (Pixel Data)', 'Lookalike (1% - 5%)', '3rd Party Interest', "
+            "'Broad / Prospecting')."
+        ),
+    )
 
     segment_id: str = Field(
         ...,
-        description="Unique identifier for the audience persona (e.g., 'urban_millennial_pro').",
+        description="System-generated UUID or unique key for this segment.",
     )
 
-    lifecycle_stage: Literal[
-        "awareness", "consideration", "conversion", "retention", "win_back"
-    ] = Field(
+    segment_name: str = Field(
         ...,
-        description="Where the user currently sits in the customer journey.",
+        description="Short human-readable name for the segment (e.g., 'High-Value Loyalists').",
     )
 
-    context_trigger: str = Field(
+    segment_size: str = Field(
+        ...,
+        description="Approximate audience size (e.g., '50k', '1.2M').",
+    )
+
+    priority_level: str = Field(
         ...,
         description=(
-            "The real-world data signal triggering this content "
-            "(e.g., 'Rainy Weather', 'Cart Abandoned > 24h', 'Competitor Keyword Search')."
+            "Priority tier for this segment (e.g., 'Tier 1 (Bespoke)', "
+            "'Tier 2 (Stock/Mix)', 'Tier 3 (Automated Adaptation)')."
         ),
     )
 
-    # --- SECTION B: THE HOOK (Psychology & Strategy) ---
-    # These fields guide the AI or Copywriter on HOW to persuade.
+    # --- 2. STRATEGIC CORE (The "Why") ---
 
-    psych_driver: str = Field(
+    segment_description: str = Field(
+        ...,
+        description="Who they are as humans; qualitative description of this audience.",
+    )
+
+    key_insight: str = Field(
+        ...,
+        description="Deep truth or friction point this strategy is solving.",
+    )
+
+    current_perception: str = Field(
+        ...,
+        description="What they believe or feel about the brand today.",
+    )
+
+    desired_perception: str = Field(
+        ...,
+        description="What we want them to believe or feel after exposure.",
+    )
+
+    # --- 3. MESSAGE ARCHITECTURE (The "What") ---
+
+    primary_message_pillar: str = Field(
+        ...,
+        description="Primary message angle for this segment (e.g., 'Reliability > Speed').",
+    )
+
+    call_to_action_objective: str = Field(
         ...,
         description=(
-            "The primary psychological lever (e.g., 'Loss Aversion', 'Social Proof', "
-            "'Authority', 'Instant Gratification')."
+            "Desired behavioral objective for the CTA "
+            "(e.g., 'Shop Now', 'Learn More', 'Sign Up', 'Watch Video', 'Get Quote')."
         ),
     )
 
-    emotional_tone: str = Field(
+    tone_guardrails: str = Field(
+        ...,
+        description="Tone and voice constraints (e.g., 'Serious, Technical, No fluff').",
+    )
+
+    # --- 4. CHANNEL & FORMAT SELECTION (The "Where") ---
+
+    platform_environments: List[str] = Field(
         ...,
         description=(
-            "The required mood/tone of the creative "
-            "(e.g., 'Urgent', 'Empathetic', 'Confident', 'Playful')."
+            "List of platform environments selected for this segment "
+            "(e.g., ['Meta: Stories/Reels (9:16)', 'TikTok: In-Feed (9:16)'])."
         ),
     )
 
-    buying_barrier: str = Field(
+    contextual_triggers: str = Field(
         ...,
-        description=(
-            "The specific hesitation this asset must overcome "
-            "(e.g., 'Price Sensitivity', 'Trust/Safety', 'Complexity')."
-        ),
+        description="Context/behavior triggers for this strategy (e.g., 'Abandoned Cart', 'Weather = Rain').",
     )
 
-    # --- SECTION C: THE PAYLOAD (Creative Directives) ---
-    # These fields dictate the components of the master asset.
+    # --- SYSTEM FIELDS (Auto / Hidden) ---
 
-    visual_archetype: str = Field(
-        ...,
-        description=(
-            "Description of the visual style required "
-            "(e.g., 'UGC-style selfie video', 'High-gloss product macro', 'Kinetic typography')."
-        ),
+    asset_id: str | None = Field(
+        default=None,
+        description="Optional system asset ID for downstream mapping.",
     )
 
-    messaging_angle: str = Field(
-        ...,
-        description=(
-            "The strategic focus of the copy (e.g., 'Focus on speed of delivery', "
-            "'Focus on durability'). NOT the final copy text."
-        ),
+    specs_lookup_key: str | None = Field(
+        default=None,
+        description="Optional key into the spec library used for downstream build.",
     )
 
-    dynamic_elements: List[str] = Field(
-        ...,
-        description=(
-            "List of specific elements that must be swappable "
-            "(e.g., ['City Name', 'Discount %', 'Weather Icon'])."
-        ),
+    notes: str | None = Field(
+        default=None,
+        description="System or strategist notes that do not need to show in every UI.",
     )
 
 

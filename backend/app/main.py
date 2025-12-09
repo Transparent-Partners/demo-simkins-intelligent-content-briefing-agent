@@ -7,6 +7,7 @@ from app.api.brief_routes import router as brief_router
 from app.api.matrix_routes import router as matrix_router
 from app.api.concept_routes import router as concept_router
 from app.api.spec_routes import router as spec_router
+from app.api.production_routes import router as production_router
 from fastapi.middleware.cors import CORSMiddleware
 import aiofiles
 import os
@@ -31,6 +32,7 @@ app.include_router(brief_router, prefix="/brief", tags=["brief"])
 app.include_router(matrix_router, prefix="/matrix", tags=["matrix"])
 app.include_router(concept_router, prefix="/concepts", tags=["concepts"])
 app.include_router(spec_router, prefix="/specs", tags=["specs"])
+app.include_router(production_router, prefix="/production", tags=["production"])
 
 class ChatMessage(BaseModel):
     role: str

@@ -9,20 +9,9 @@ type Message = {
   content: string;
 };
 
+// MatrixRow is intentionally flexible: it supports the Strategy Matrix defaults
+// plus any user-defined columns the strategist adds.
 type MatrixRow = {
-  id: string;
-  audience_segment: string;
-  funnel_stage: string;
-  trigger: string;
-  channel: string;
-  format: string;
-  message: string;
-  variant: string;
-  // Optional extended fields so users can add more detail to the matrix
-  source_type?: string;
-  specs?: string;
-  notes?: string;
-  // Custom fields keyed by user-defined column keys
   [key: string]: string | undefined;
 };
 
@@ -35,34 +24,43 @@ type MatrixFieldConfig = {
   isCustom?: boolean;
 };
 
+// Strategic Matrix defaults
+const PRIMARY_MATRIX_KEYS: MatrixFieldKey[] = [
+  'segment_id',
+  'context_trigger',
+  'psych_driver',
+  'buying_barrier',
+  'visual_archetype',
+  'messaging_angle',
+];
+
+const EXECUTION_MATRIX_KEYS: MatrixFieldKey[] = [
+  'channel',
+  'format_type',
+  'dynamic_elements',
+  'variant_label',
+];
+
+const SYSTEM_MATRIX_KEYS: MatrixFieldKey[] = ['asset_id', 'specs_lookup_key', 'notes'];
+
 const BASE_MATRIX_FIELDS: MatrixFieldConfig[] = [
-  // Execution anchor
-  { key: 'id', label: 'Asset ID' },
-
-  // SECTION A: The Signal (Who & When)
-  { key: 'audience_segment', label: 'Segment ID' },
-  { key: 'funnel_stage', label: 'Lifecycle Stage' },
-  { key: 'trigger', label: 'Context Trigger' },
-
-  // SECTION B: The Hook (Psychology & Strategy)
+  // PRIMARY FIELDS
+  { key: 'segment_id', label: 'Segment ID' },
+  { key: 'context_trigger', label: 'Context Trigger' },
   { key: 'psych_driver', label: 'Psych Driver' },
-  { key: 'emotional_tone', label: 'Emotional Tone' },
   { key: 'buying_barrier', label: 'Buying Barrier' },
-
-  // SECTION C: The Payload (Creative Directives)
   { key: 'visual_archetype', label: 'Visual Archetype' },
   { key: 'messaging_angle', label: 'Messaging Angle' },
-  { key: 'dynamic_elements', label: 'Dynamic Elements' },
 
-  // Channel / format execution details
+  // EXECUTION FIELDS
   { key: 'channel', label: 'Channel' },
-  { key: 'format', label: 'Format' },
+  { key: 'format_type', label: 'Format Type' },
+  { key: 'dynamic_elements', label: 'Dynamic Elements' },
+  { key: 'variant_label', label: 'Variant Label' },
 
-  // Legacy / execution-level fields that still help production
-  { key: 'message', label: 'Message' },
-  { key: 'variant', label: 'Variant' },
-  { key: 'source_type', label: 'Source Type' },
-  { key: 'specs', label: 'Specs' },
+  // SYSTEM FIELDS (initially hidden in UI)
+  { key: 'asset_id', label: 'Asset ID' },
+  { key: 'specs_lookup_key', label: 'Specs Key' },
   { key: 'notes', label: 'Notes' },
 ];
 
@@ -447,7 +445,7 @@ export default function Home() {
   const [rightTab, setRightTab] = useState<'builder' | 'board'>('builder');
   const [matrixFields, setMatrixFields] = useState<MatrixFieldConfig[]>(BASE_MATRIX_FIELDS);
   const [visibleMatrixFields, setVisibleMatrixFields] = useState<MatrixFieldKey[]>(
-    BASE_MATRIX_FIELDS.map((f) => f.key),
+  [...PRIMARY_MATRIX_KEYS, ...EXECUTION_MATRIX_KEYS],
   );
   const [showMatrixFieldConfig, setShowMatrixFieldConfig] = useState(false);
   const [showMatrixLibrary, setShowMatrixLibrary] = useState(false);
@@ -736,7 +734,7 @@ export default function Home() {
         lines.push(planToSend.narrative_brief);
         lines.push('');
       }
-      lines.push('Content Matrix (preview):');
+      lines.push('Strategy Matrix (preview):');
       (planToSend.content_matrix || []).forEach((row: any) => {
         lines.push(
           `- asset=${row.asset_id} | audience=${row.audience_segment} | stage=${row.funnel_stage} | trigger=${row.trigger} | channel=${row.channel} | format=${row.format} | message=${row.message}`,
@@ -844,6 +842,42 @@ export default function Home() {
 
   function removeConcept(index: number) {
     setConcepts((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function draftConceptsFromBrief() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/concepts/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brief: briefState }),
+      });
+      if (!res.ok) {
+        console.error('Failed to draft concepts from brief', await res.text());
+        return;
+      }
+      const data = await res.json();
+      const generated = (data?.state?.concepts ?? []) as any[];
+      if (!Array.isArray(generated) || !generated.length) return;
+
+      setConcepts((prev) => {
+        const existingIds = new Set(prev.map((c) => c.id));
+        const mapped = generated
+          .filter((c) => c && typeof c.id === 'string' && !existingIds.has(c.id))
+          .map((c) => ({
+            id: c.id,
+            asset_id: '',
+            title: c.name ?? '',
+            description: c.visual_description ?? '',
+            notes: '',
+            kind: undefined,
+            status: 'idle' as const,
+            generatedPrompt: undefined,
+          }));
+        return [...prev, ...mapped];
+      });
+    } catch (e) {
+      console.error('Error calling /concepts/generate', e);
+    }
   }
 
   function toggleMatrixField(key: MatrixFieldKey) {
@@ -955,7 +989,7 @@ export default function Home() {
       alert('Add at least one row to the content matrix before saving to the library.');
       return;
     }
-    const name = window.prompt('Name this content matrix template:', 'New Content Matrix');
+    const name = window.prompt('Name this strategy matrix template:', 'New Strategy Matrix');
     if (!name) return;
 
     const description =
@@ -1218,7 +1252,7 @@ export default function Home() {
                         onClick={() => setSampleTab('matrix')}
                         className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${sampleTab === 'matrix' ? 'border-teal-500 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                     >
-                        Content Matrix
+                        Strategy Matrix
                     </button>
                     <button 
                         onClick={() => setSampleTab('json')}
@@ -1409,7 +1443,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* RIGHT: Live Preview / Content Matrix Workspace / Concepts */}
+      {/* RIGHT: Live Preview / Strategy Matrix Workspace / Concepts */}
       {workspaceView !== 'brief' && (
       <>
         <div
@@ -1511,7 +1545,7 @@ export default function Home() {
                         <div className="flex justify-between items-center mb-3">
                           <div className="flex items-center gap-3">
                             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                              Content Matrix
+                              Strategy Matrix
                             </h3>
                             <button
                               type="button"
@@ -1641,9 +1675,9 @@ export default function Home() {
                   {/* Sticky header so the close button is always visible */}
                   <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-white/95 backdrop-blur-md sticky top-0 z-10">
                     <div>
-                      <h2 className="text-sm font-semibold text-slate-800">Content Matrix Library</h2>
+                      <h2 className="text-sm font-semibold text-slate-800">Strategy Matrix Library</h2>
                       <p className="text-[11px] text-slate-500">
-                        Save and reuse structured content matrices across campaigns.
+                        Save and reuse structured strategy matrices across campaigns.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1744,12 +1778,21 @@ export default function Home() {
                         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                           Concept Canvas
                         </h3>
-                        <button
-                          onClick={addConcept}
-                          className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-teal-50 border border-teal-100"
-                        >
-                          + Add concept
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={draftConceptsFromBrief}
+                            className="text-xs text-slate-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-white border border-slate-200 hover:border-teal-300"
+                          >
+                            Draft from brief
+                          </button>
+                          <button
+                            onClick={addConcept}
+                            className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1 rounded-full bg-teal-50 border border-teal-100"
+                          >
+                            + Add concept
+                          </button>
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button

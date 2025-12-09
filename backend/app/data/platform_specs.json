@@ -1,0 +1,233 @@
+{
+  "platforms": {
+    "meta": {
+      "id": "meta",
+      "name": "Meta (Facebook & Instagram)",
+      "formats": [
+        {
+          "id": "reels_9x16",
+          "name": "Reels 9:16 Vertical Video",
+          "ratio": "9:16",
+          "resolution_recommended": "1080x1920",
+          "media_type": "video",
+          "max_duration_seconds": 60,
+          "safe_zones": {
+            "instruction": "Avoid critical text/logo in top 250px and bottom 350px to steer clear of UI chrome and captions."
+          }
+        },
+        {
+          "id": "stories_9x16",
+          "name": "Stories 9:16 Image/Video",
+          "ratio": "9:16",
+          "resolution_recommended": "1080x1920",
+          "media_type": "image_or_video",
+          "max_duration_seconds": 15,
+          "safe_zones": {
+            "instruction": "Keep key creative in the central 1080x1420 area; leave top and bottom clear of text."
+          }
+        },
+        {
+          "id": "feed_1x1",
+          "name": "Feed 1:1 Image/Video",
+          "ratio": "1:1",
+          "resolution_recommended": "1080x1080",
+          "media_type": "image_or_video",
+          "safe_zones": {
+            "instruction": "Design for mobile-first legibility; no specific safe zone, but avoid tiny text."
+          }
+        },
+        {
+          "id": "feed_4x5",
+          "name": "Feed 4:5 Vertical",
+          "ratio": "4:5",
+          "resolution_recommended": "1080x1350",
+          "media_type": "image_or_video",
+          "safe_zones": {
+            "instruction": "Treat as tall feed card; keep core focal area centered vertically."
+          }
+        }
+      ]
+    },
+    "tiktok": {
+      "id": "tiktok",
+      "name": "TikTok",
+      "formats": [
+        {
+          "id": "in_feed_9x16",
+          "name": "In‑Feed 9:16 Vertical",
+          "ratio": "9:16",
+          "resolution_recommended": "1080x1920",
+          "media_type": "video",
+          "max_duration_seconds": 60,
+          "safe_zones": {
+            "instruction": "Keep text away from right edge and bottom 300px where UI and captions sit."
+          }
+        }
+      ]
+    },
+    "youtube": {
+      "id": "youtube",
+      "name": "YouTube",
+      "formats": [
+        {
+          "id": "shorts_9x16",
+          "name": "Shorts 9:16 Vertical",
+          "ratio": "9:16",
+          "resolution_recommended": "1080x1920",
+          "media_type": "video",
+          "safe_zones": {
+            "instruction": "Avoid corners; keep important content in the central vertical band."
+          }
+        },
+        {
+          "id": "instream_16x9",
+          "name": "In‑Stream 16:9",
+          "ratio": "16:9",
+          "resolution_recommended": "1920x1080",
+          "media_type": "video",
+          "safe_zones": {
+            "instruction": "TV-safe; allow for overscan on connected TVs, avoid tiny typography."
+          }
+        }
+      ]
+    },
+    "gdn": {
+      "id": "gdn",
+      "name": "Google Display Network",
+      "formats": [
+        {
+          "id": "mpu_300x250",
+          "name": "MPU 300x250",
+          "ratio": "6:5",
+          "resolution_recommended": "300x250",
+          "media_type": "image_or_html5",
+          "safe_zones": {
+            "instruction": "Use a simple modular layout: logo, one line of copy, one CTA."
+          }
+        },
+        {
+          "id": "leaderboard_728x90",
+          "name": "Leaderboard 728x90",
+          "ratio": "728:90",
+          "resolution_recommended": "728x90",
+          "media_type": "image_or_html5",
+          "safe_zones": {
+            "instruction": "Very constrained vertical height; prioritize logo and a short message."
+          }
+        },
+        {
+          "id": "skyscraper_160x600",
+          "name": "Wide Skyscraper 160x600",
+          "ratio": "4:15",
+          "resolution_recommended": "160x600",
+          "media_type": "image_or_html5",
+          "safe_zones": {
+            "instruction": "Stack content top‑to‑bottom; avoid dense copy near the bottom edge."
+          }
+        }
+      ]
+    },
+    "linkedin": {
+      "id": "linkedin",
+      "name": "LinkedIn",
+      "formats": [
+        {
+          "id": "single_image_1x1",
+          "name": "Sponsored Content – Single Image",
+          "ratio": "1:1",
+          "resolution_recommended": "1200x1200",
+          "media_type": "image",
+          "safe_zones": {
+            "instruction": "B2B environment; design for clarity over decoration."
+          }
+        },
+        {
+          "id": "video_16x9",
+          "name": "Sponsored Video – 16:9",
+          "ratio": "16:9",
+          "resolution_recommended": "1920x1080",
+          "media_type": "video",
+          "safe_zones": {
+            "instruction": "Assume sound‑off; ensure captions and key messaging are legible."
+          }
+        }
+      ]
+    },
+    "x": {
+      "id": "x",
+      "name": "X (Twitter)",
+      "formats": [
+        {
+          "id": "promoted_image_16x9",
+          "name": "Promoted Image 16:9",
+          "ratio": "16:9",
+          "resolution_recommended": "1600x900",
+          "media_type": "image",
+          "safe_zones": {
+            "instruction": "Avoid putting copy in corners; tweet text already carries most of the message."
+          }
+        },
+        {
+          "id": "vertical_video_9x16",
+          "name": "Vertical Video 9:16",
+          "ratio": "9:16",
+          "resolution_recommended": "1080x1920",
+          "media_type": "video",
+          "safe_zones": {
+            "instruction": "Hook in first second; keep subtitles above progress bar."
+          }
+        }
+      ]
+    },
+    "snapchat": {
+      "id": "snapchat",
+      "name": "Snapchat",
+      "formats": [
+        {
+          "id": "snap_ads_9x16",
+          "name": "Snap Ads / Story Ads 9:16",
+          "ratio": "9:16",
+          "resolution_recommended": "1080x1920",
+          "media_type": "video_or_image",
+          "safe_zones": {
+            "instruction": "Full‑screen vertical; keep logos and CTAs away from top/bottom UI overlays."
+          }
+        }
+      ]
+    },
+    "pinterest": {
+      "id": "pinterest",
+      "name": "Pinterest",
+      "formats": [
+        {
+          "id": "standard_2x3",
+          "name": "Standard Pin 2:3",
+          "ratio": "2:3",
+          "resolution_recommended": "1000x1500",
+          "media_type": "image",
+          "safe_zones": {
+            "instruction": "Design for saves; use clear hierarchy and minimal text overlays."
+          }
+        }
+      ]
+    },
+    "ctv": {
+      "id": "ctv",
+      "name": "Connected TV",
+      "formats": [
+        {
+          "id": "fullscreen_16x9",
+          "name": "Full‑Screen 16:9",
+          "ratio": "16:9",
+          "resolution_recommended": "1920x1080",
+          "media_type": "video",
+          "safe_zones": {
+            "instruction": "Large screen viewing; allow safe margins for overscan and keep CTAs large."
+          }
+        }
+      ]
+    }
+  }
+}
+
+
