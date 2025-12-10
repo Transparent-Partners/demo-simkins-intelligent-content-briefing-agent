@@ -168,6 +168,11 @@ type ProductionJobRow = {
   destinations: DeliveryDestinationRow[];
   technical_summary: string;
   status: string;
+  // feed/build meta captured later in UI, not required from generator
+  feed_template?: string;
+  feed_id?: string;
+  feed_asset_id?: string;
+  production_details?: string;
 };
 
 type ProductionMatrixLine = {
@@ -722,7 +727,14 @@ export default function Home() {
   const [builderLoading, setBuilderLoading] = useState(false);
   const [builderError, setBuilderError] = useState<string | null>(null);
   const [jobRequirements, setJobRequirements] = useState<{ [jobId: string]: string }>({});
-  const [jobStatuses, setJobStatuses] = useState<{ [jobId: string]: string }>({});
+  const [jobFeedMeta, setJobFeedMeta] = useState<{
+    [jobId: string]: {
+      feed_template?: string;
+      feed_id?: string;
+      feed_asset_id?: string;
+      production_details?: string;
+    };
+  }>({});
   const [newSpecPlatform, setNewSpecPlatform] = useState('');
   const [newSpecPlacement, setNewSpecPlacement] = useState('');
   const [newSpecWidth, setNewSpecWidth] = useState('');
@@ -736,7 +748,7 @@ export default function Home() {
   const [productionTab, setProductionTab] = useState<'requirements' | 'specLibrary'>('requirements');
   const [pendingDestAudience, setPendingDestAudience] = useState<{ [rowId: string]: string }>({});
   const [showPlan, setShowPlan] = useState(false);
-  const [showJobs, setShowJobs] = useState(true);
+  const [showJobs, setShowJobs] = useState(false);
   const [showBoard, setShowBoard] = useState(true);
   const [productionMatrixRows, setProductionMatrixRows] = useState<ProductionMatrixLine[]>([
     {
@@ -2612,7 +2624,7 @@ export default function Home() {
                   <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-4">
                     <div>
                       <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Plan (Audience → Concept → Spec)
+                        Plan (Audience → Concept → Spec) (What & Where)
                       </h3>
                       <p className="text-[11px] text-slate-500 max-w-xl">
                         Optional planning table that feeds the production jobs. Collapse if you prefer to work only from jobs.
@@ -2626,6 +2638,12 @@ export default function Home() {
                       {showPlan ? 'Hide plan' : 'Show plan'}
                     </button>
                   </div>
+
+                  {!showPlan && (
+                    <div className="bg-white border border-dashed border-slate-200 rounded-xl p-4 text-[11px] text-slate-500">
+                      Plan is hidden. Expand to edit the audience → concept → spec mapping that feeds jobs.
+                    </div>
+                  )}
 
                   {showPlan && (
                     <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
@@ -2931,7 +2949,7 @@ export default function Home() {
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                          Production Jobs
+                          Production Jobs (How)
                         </h3>
                         <p className="text-[11px] text-slate-500 max-w-xl">
                           Execution view: the assets to build, where they go, and the requirements for each one.
@@ -2944,13 +2962,12 @@ export default function Home() {
                           onClick={() => setShowJobs((prev) => !prev)}
                           className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
                         >
-                          {showJobs ? 'Hide section' : 'Show section'}
+                          {showJobs ? 'Hide jobs' : 'Show jobs'}
                         </button>
                         <button
                           type="button"
                           onClick={generateProductionJobsFromBuilder}
                           disabled={
-                            !showJobs ||
                             builderLoading ||
                             (!builderSelectedConceptId && productionMatrixRows.length === 0) ||
                             (builderSelectedSpecIds.length === 0 && productionMatrixRows.length === 0)
@@ -2962,7 +2979,6 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => generateProductionJobsFromBuilder()}
-                          disabled={!showJobs}
                           className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 disabled:opacity-50"
                         >
                           Send matrix rows →
@@ -3022,13 +3038,11 @@ export default function Home() {
                         {builderJobs.length > 0 && (
                           <div className="pt-3 border-t border-slate-200 space-y-2">
                             <h4 className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-                              Consolidated Production Jobs
+                              Jobs Preview (How)
                             </h4>
                             <p className="text-[11px] text-slate-500 max-w-2xl">
-                              Each row is one master asset to be produced, with multiple downstream
-                              delivery destinations grouped by shared physical specs. Add requirements
-                              and a simple status so producers can see what needs to be built and where
-                              it stands.
+                              One row per asset to be built, grouped by shared specs with destinations attached.
+                              Add requirements and a simple status before you move work to the board.
                             </p>
                             <div className="overflow-x-auto">
                               <table className="min-w-full text-[11px]">
@@ -3037,7 +3051,7 @@ export default function Home() {
                                     <th className="py-1.5 pr-4 font-semibold">Production Asset</th>
                                     <th className="py-1.5 pr-4 font-semibold">Tech Specs</th>
                                     <th className="py-1.5 pr-4 font-semibold">Destinations</th>
-                                    <th className="py-1.5 pr-4 font-semibold">Meta</th>
+                                    <th className="py-1.5 pr-4 font-semibold">Specs</th>
                                     <th className="py-1.5 pr-4 font-semibold">Requirements</th>
                                     <th className="py-1.5 pr-4 font-semibold">Status</th>
                                   </tr>
@@ -3047,7 +3061,6 @@ export default function Home() {
                                     const uniqueNotes = Array.from(
                                       new Set(job.destinations.map((d) => d.special_notes).filter(Boolean)),
                                     );
-                                    const effectiveStatus = jobStatuses[job.job_id] ?? job.status;
                                     const requirementsValue = jobRequirements[job.job_id] ?? '';
                                     return (
                                       <tr key={job.job_id} className="border-b border-slate-100 align-top">
@@ -3101,22 +3114,6 @@ export default function Home() {
                                             }
                                           />
                                         </td>
-                                        <td className="py-1.5 pr-4 text-slate-700">
-                                          <select
-                                            className="text-[11px] border border-slate-300 rounded-full px-2 py-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                                            value={effectiveStatus}
-                                            onChange={(e) =>
-                                              setJobStatuses((prev) => ({
-                                                ...prev,
-                                                [job.job_id]: e.target.value,
-                                              }))
-                                            }
-                                          >
-                                            <option value="Pending">Pending</option>
-                                            <option value="In-Production">In Production</option>
-                                            <option value="Approved">Approved</option>
-                                          </select>
-                                        </td>
                                       </tr>
                                     );
                                   })}
@@ -3134,7 +3131,7 @@ export default function Home() {
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                          Production Matrix (Board)
+                          Production Matrix (Board) (When / Progress)
                         </h3>
                         <p className="text-[11px] text-slate-500 max-w-xl">
                           Kanban view of the production jobs. Each card is a single asset to be built with full spec details.

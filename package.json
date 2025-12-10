@@ -1,0 +1,7 @@
+{
+  "name": "intelligent-briefing-agent",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Building...'"
+  }
+}
