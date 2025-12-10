@@ -1811,6 +1811,7 @@ export default function Home() {
       setBuilderJobs(jobs);
       setBuilderError(null);
       setProductionTab('requirements');
+      setShowJobs(true);
       return;
     }
 
@@ -2894,6 +2895,9 @@ export default function Home() {
                           </thead>
                           <tbody>
                             {productionMatrixRows.map((row, index) => {
+                              const audienceOptions = Array.from(
+                                new Set(matrixRows.map((r) => r.segment_name).filter(Boolean)),
+                              );
                               const specOptions = specs;
                               return (
                                 <tr key={row.id} className="border-t border-slate-100">
@@ -2903,7 +2907,13 @@ export default function Home() {
                                       value={row.audience}
                                       onChange={(e) => updateProductionMatrixCell(index, 'audience', e.target.value)}
                                       placeholder="Audience / cohort"
+                                      list={`audience-options-${index}`}
                                     />
+                                    <datalist id={`audience-options-${index}`}>
+                                      {audienceOptions.map((opt) => (
+                                        <option key={opt} value={opt} />
+                                      ))}
+                                    </datalist>
                                   </td>
                                   <td className="px-3 py-2 align-top">
                                     <select
