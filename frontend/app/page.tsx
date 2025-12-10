@@ -2594,7 +2594,7 @@ export default function Home() {
                             <th className="px-3 py-2 text-left">Audience</th>
                             <th className="px-3 py-2 text-left">Concept</th>
                             <th className="px-3 py-2 text-left">Spec</th>
-                            <th className="px-3 py-2 text-left">Destinations</th>
+                            <th className="px-3 py-2 text-left">Destinations (auto from spec)</th>
                             <th className="px-3 py-2 text-left">Feed?</th>
                             <th className="px-3 py-2 text-left">Feed Template</th>
                             <th className="px-3 py-2 text-left">Template ID</th>
@@ -2640,8 +2640,9 @@ export default function Home() {
                                       const nextSpecId = e.target.value;
                                       updateProductionMatrixCell(index, 'spec_id', nextSpecId);
                                       const selectedSpec = specs.find((s) => s.id === nextSpecId);
-                                      if (selectedSpec && !row.destinations.trim()) {
-                                        updateProductionMatrixCell(index, 'destinations', selectedSpec.platform);
+                                      if (selectedSpec) {
+                                        const destLabel = `${selectedSpec.platform} · ${selectedSpec.placement}`;
+                                        updateProductionMatrixCell(index, 'destinations', destLabel);
                                       }
                                     }}
                                   >
@@ -2658,8 +2659,12 @@ export default function Home() {
                                     className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
                                     value={row.destinations}
                                     onChange={(e) => updateProductionMatrixCell(index, 'destinations', e.target.value)}
-                                    placeholder="Comma-separated: YouTube, TikTok…"
+                                    placeholder="Select a spec to set partner/placement"
+                                    disabled={Boolean(row.spec_id)}
                                   />
+                                  <p className="text-[10px] text-slate-400 mt-1">
+                                    Destinations mirror the chosen spec’s platform/placement.
+                                  </p>
                                 </td>
                                 <td className="px-3 py-2 align-top text-center">
                                   <input
@@ -2670,39 +2675,56 @@ export default function Home() {
                                   />
                                 </td>
                                 <td className="px-3 py-2 align-top">
-                                  <input
-                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                    value={row.feed_template}
-                                    onChange={(e) => updateProductionMatrixCell(index, 'feed_template', e.target.value)}
-                                    placeholder="Feed/DCO template name"
-                                  />
+                                  {row.is_feed ? (
+                                    <input
+                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                      value={row.feed_template}
+                                      onChange={(e) =>
+                                        updateProductionMatrixCell(index, 'feed_template', e.target.value)
+                                      }
+                                      placeholder="Feed/DCO template name"
+                                    />
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400">Toggle Feed to add</span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2 align-top">
-                                  <input
-                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                    value={row.template_id ?? ''}
-                                    onChange={(e) => updateProductionMatrixCell(index, 'template_id', e.target.value)}
-                                    placeholder="Template ID"
-                                  />
+                                  {row.is_feed ? (
+                                    <input
+                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                      value={row.template_id ?? ''}
+                                      onChange={(e) => updateProductionMatrixCell(index, 'template_id', e.target.value)}
+                                      placeholder="Template ID"
+                                    />
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400">Feed off</span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2 align-top">
-                                  <input
-                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                    value={row.feed_id ?? ''}
-                                    onChange={(e) => updateProductionMatrixCell(index, 'feed_id', e.target.value)}
-                                    placeholder="Feed ID"
-                                  />
+                                  {row.is_feed ? (
+                                    <input
+                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                      value={row.feed_id ?? ''}
+                                      onChange={(e) => updateProductionMatrixCell(index, 'feed_id', e.target.value)}
+                                      placeholder="Feed ID"
+                                    />
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400">Feed off</span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2 align-top">
-                                  <input
-                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                    value={row.feed_asset_id ?? ''}
-                                    onChange={(e) =>
-                                      updateProductionMatrixCell(index, 'feed_asset_id', e.target.value)
-                                    }
-                                    placeholder="Asset ID in feed"
-                                    disabled={!row.is_feed}
-                                  />
+                                  {row.is_feed ? (
+                                    <input
+                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                      value={row.feed_asset_id ?? ''}
+                                      onChange={(e) =>
+                                        updateProductionMatrixCell(index, 'feed_asset_id', e.target.value)
+                                      }
+                                      placeholder="Asset ID in feed"
+                                    />
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400">Feed off</span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2 align-top">
                                   <textarea
