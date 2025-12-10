@@ -49,6 +49,19 @@ const EXECUTION_MATRIX_KEYS: MatrixFieldKey[] = [
   'contextual_triggers',
 ];
 
+const PLATFORM_MATRIX_KEYS: MatrixFieldKey[] = [
+  'crm_cohort',
+  'site_behavior',
+  'meta_audience',
+  'tiktok_audience',
+  'youtube_audience',
+  'linkedin_audience',
+  'dv360_audience',
+  'open_web_audience',
+  'liveramp_segment',
+  'pixel_event_trigger',
+];
+
 const SYSTEM_MATRIX_KEYS: MatrixFieldKey[] = ['asset_id', 'specs_lookup_key', 'notes'];
 
 const BASE_MATRIX_FIELDS: MatrixFieldConfig[] = [
@@ -73,6 +86,18 @@ const BASE_MATRIX_FIELDS: MatrixFieldConfig[] = [
   // Channel & Format Selection
   { key: 'platform_environments', label: 'Platform Environments' },
   { key: 'contextual_triggers', label: 'Contextual Triggers' },
+
+  // Platform-specific audience handles
+  { key: 'crm_cohort', label: 'CRM / 1P Segment' },
+  { key: 'site_behavior', label: 'Site Behavior / Trigger' },
+  { key: 'meta_audience', label: 'Meta Audience' },
+  { key: 'tiktok_audience', label: 'TikTok Audience' },
+  { key: 'youtube_audience', label: 'YouTube Audience' },
+  { key: 'linkedin_audience', label: 'LinkedIn Audience' },
+  { key: 'dv360_audience', label: 'DV360 Audience' },
+  { key: 'open_web_audience', label: 'Open Web / Display Audience' },
+  { key: 'liveramp_segment', label: 'LiveRamp Segment' },
+  { key: 'pixel_event_trigger', label: 'Pixel Event Trigger' },
 
   // SYSTEM FIELDS (initially hidden in UI)
   { key: 'asset_id', label: 'Asset ID' },
@@ -2173,7 +2198,7 @@ export default function Home() {
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              Matrix
+              Audiences
             </button>
             <button
               onClick={() => switchWorkspace('concepts')}
@@ -2540,7 +2565,7 @@ export default function Home() {
             <div className="flex items-center gap-4">
               <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
                 {workspaceView === 'matrix'
-                  ? 'Strategy Matrix'
+                  ? 'Audience Matrix'
                   : workspaceView === 'concepts'
                   ? 'Concept Workspace'
                   : workspaceView === 'production'
@@ -2771,7 +2796,7 @@ export default function Home() {
                                         onChange={(e) =>
                                           updateMatrixCell(index, field.key as MatrixFieldKey, e.target.value)
                                         }
-                                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                        className="w-full border border-gray-200 rounded px-2 py-2 text-sm leading-5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
                                       />
                                     </td>
                                   ))}
