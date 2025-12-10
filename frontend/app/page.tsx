@@ -146,6 +146,22 @@ type ProductionAsset = {
   file_url?: string | null;
 };
 
+type DeliveryDestinationRow = {
+  platform_name: string;
+  spec_id: string;
+  format_name: string;
+  special_notes: string;
+};
+
+type ProductionJobRow = {
+  job_id: string;
+  creative_concept: string;
+  asset_type: string;
+  destinations: DeliveryDestinationRow[];
+  technical_summary: string;
+  status: string;
+};
+
 // Feed Builder (Asset Feed) row type mirrors the Master Feed Variable Set
 type FeedRow = {
   row_id: string;
@@ -574,6 +590,13 @@ export default function Home() {
   const [productionLoading, setProductionLoading] = useState(false);
   const [productionError, setProductionError] = useState<string | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<ProductionAsset | null>(null);
+  const [builderSelectedConceptId, setBuilderSelectedConceptId] = useState<string>('');
+  const [builderSelectedSpecIds, setBuilderSelectedSpecIds] = useState<string[]>([]);
+  const [builderJobs, setBuilderJobs] = useState<ProductionJobRow[]>([]);
+  const [builderLoading, setBuilderLoading] = useState(false);
+  const [builderError, setBuilderError] = useState<string | null>(null);
+  const [jobRequirements, setJobRequirements] = useState<{ [jobId: string]: string }>({});
+  const [jobStatuses, setJobStatuses] = useState<{ [jobId: string]: string }>({});
   const [feedFields, setFeedFields] = useState<FeedFieldConfig[]>(BASE_FEED_FIELDS);
   const [visibleFeedFields, setVisibleFeedFields] = useState<FeedFieldKey[]>(
     BASE_FEED_FIELDS.map((f) => f.key).filter((key) => key !== 'date_start' && key !== 'date_end'),
@@ -1383,6 +1406,47 @@ export default function Home() {
     }
   }
 
+  function toggleBuilderSpec(id: string) {
+    setBuilderSelectedSpecIds((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((x) => x !== id);
+      }
+      return [...prev, id];
+    });
+  }
+
+  async function generateProductionJobsFromBuilder() {
+    if (!builderSelectedConceptId || builderSelectedSpecIds.length === 0) return;
+
+    const concept = concepts.find((c) => c.id === builderSelectedConceptId);
+    const conceptLabel =
+      concept?.title || concept?.description || concept?.id || 'Untitled Concept';
+
+    setBuilderLoading(true);
+    setBuilderError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/production/builder/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creative_concept: conceptLabel,
+          spec_ids: builderSelectedSpecIds,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Failed with status ${res.status}`);
+      }
+      const data = await res.json();
+      setBuilderJobs(data.jobs || []);
+    } catch (e: any) {
+      console.error('Error generating production jobs', e);
+      setBuilderError(e?.message ?? 'Unable to generate production list from backend.');
+    } finally {
+      setBuilderLoading(false);
+    }
+  }
+
   function toggleMatrixField(key: MatrixFieldKey) {
     setVisibleMatrixFields((prev) => {
       const exists = prev.includes(key);
@@ -1531,10 +1595,23 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (workspaceView === 'specs' && specs.length === 0 && !loadingSpecs) {
+    if (
+      (workspaceView === 'specs' || workspaceView === 'production') &&
+      specs.length === 0 &&
+      !loadingSpecs
+    ) {
       loadSpecs();
     }
   }, [workspaceView]);
+
+  const specsByPlatform: { [platform: string]: Spec[] } = {};
+  for (const spec of specs) {
+    const key = spec.platform || 'Other';
+    if (!specsByPlatform[key]) {
+      specsByPlatform[key] = [];
+    }
+    specsByPlatform[key].push(spec);
+  }
 
   return (
     <main
@@ -2187,210 +2264,454 @@ export default function Home() {
 
               {workspaceView === 'production' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Production Matrix
-                      </h3>
-                      <p className="text-[11px] text-slate-500 max-w-xl">
-                        Generate and manage the Bill of Materials for this campaign. Each card is a single
-                        asset to be built, with full spec details for editors and producers.
-                      </p>
+                  {/* Production Requirements List – concept-to-spec grouper */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Production Requirements List
+                        </h3>
+                        <p className="text-[11px] text-slate-500 max-w-xl">
+                          Define which master assets are needed, where they will run, and capture
+                          high-level production requirements against each one. This is your
+                          pre-production checklist before detailed tickets are created.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={generateProductionJobsFromBuilder}
+                        disabled={
+                          builderLoading ||
+                          !builderSelectedConceptId ||
+                          builderSelectedSpecIds.length === 0
+                        }
+                        className="px-4 py-2 text-xs font-semibold rounded-full bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
+                      >
+                        {builderLoading ? 'Generating…' : 'Generate Production List'}
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={generateProductionPlan}
-                      disabled={productionLoading}
-                      className="px-4 py-2 text-xs font-semibold rounded-full bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
-                    >
-                      {productionLoading ? 'Generating…' : productionBatch ? 'Regenerate Plan' : 'Generate Plan'}
-                    </button>
-                  </div>
-                  {productionError && (
-                    <p className="text-[11px] text-red-500">{productionError}</p>
-                  )}
-                  {!productionBatch || productionAssets.length === 0 ? (
-                    <div className="mt-12 flex flex-col items-center justify-center text-center text-slate-400 gap-3">
-                      <p className="text-sm max-w-xs">
-                        Start by generating a production plan from the first Strategy card and Concept. You can
-                        then move assets through Todo → In Progress → Review → Approved.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      {['Todo', 'In_Progress', 'Review', 'Approved'].map((col) => (
-                        <div key={col} className="bg-white border border-slate-200 rounded-xl p-3 flex flex-col gap-2">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-                              {col === 'In_Progress' ? 'In Progress' : col}
-                            </span>
-                            <span className="text-[10px] text-slate-400">
-                              {productionAssets.filter((a) => a.status === col).length}
-                            </span>
-                          </div>
-                          <div className="space-y-2">
-                            {productionAssets
-                              .filter((a) => a.status === col)
-                              .map((asset) => (
-                                <button
-                                  key={asset.id}
-                                  type="button"
-                                  onClick={() => setSelectedAsset(asset)}
-                                  className="w-full text-left bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 hover:border-teal-400 hover:bg-teal-50 transition-colors"
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="min-w-0">
-                                      <p className="text-[11px] font-semibold text-slate-800 truncate">
-                                        {asset.asset_name}
-                                      </p>
-                                      <p className="text-[10px] text-slate-500 truncate">
-                                        {asset.platform} · {asset.placement}
-                                      </p>
-                                    </div>
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 capitalize">
-                                      {asset.asset_type}
+                    {builderError && (
+                      <p className="text-[11px] text-red-500">{builderError}</p>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                          Creative Concept
+                        </label>
+                        <select
+                          value={builderSelectedConceptId}
+                          onChange={(e) => {
+                            setBuilderSelectedConceptId(e.target.value);
+                          }}
+                          className="w-full text-sm border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        >
+                          <option value="">Select a concept…</option>
+                          {concepts.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.title}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[11px] text-slate-500">
+                          Concepts come from the Concept Canvas above. Choose one to act as the
+                          master idea for this asset group.
+                        </p>
+                      </div>
+                      <div className="md:col-span-2 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                            Spec Library
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {loadingSpecs ? 'Loading…' : `${specs.length} specs`}
+                          </span>
+                        </div>
+                        <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50">
+                          {loadingSpecs && (
+                            <div className="p-3 text-[11px] text-slate-500">Loading specs…</div>
+                          )}
+                          {specsError && !loadingSpecs && (
+                            <div className="p-3 text-[11px] text-red-500">{specsError}</div>
+                          )}
+                          {!loadingSpecs && !specsError && specs.length === 0 && (
+                            <div className="p-3 text-[11px] text-slate-400">
+                              No specs available yet. Add specs in the Specs workspace.
+                            </div>
+                          )}
+                          {!loadingSpecs && !specsError && specs.length > 0 && (
+                            <div className="divide-y divide-slate-200">
+                              {Object.entries(specsByPlatform).map(([platform, rows]) => (
+                                <div key={platform} className="p-2 space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-semibold text-slate-700">
+                                      {platform}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400">
+                                      {rows.length} formats
                                     </span>
                                   </div>
-                                </button>
+                                  <div className="space-y-1">
+                                    {rows.map((spec) => {
+                                      const checked = builderSelectedSpecIds.includes(spec.id);
+                                      return (
+                                        <label
+                                          key={spec.id}
+                                          className="flex items-center gap-2 text-[11px] text-slate-700 cursor-pointer hover:bg-white rounded-md px-1 py-0.5"
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            className="h-3 w-3 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                            checked={checked}
+                                            onChange={() => toggleBuilderSpec(spec.id)}
+                                          />
+                                          <span className="flex-1 flex flex-col md:flex-row md:items-center md:justify-between gap-0.5">
+                                            <span>
+                                              {spec.placement}{' '}
+                                              <span className="text-slate-400">
+                                                ({spec.width}x{spec.height}, {spec.orientation})
+                                              </span>
+                                            </span>
+                                            {spec.notes && (
+                                              <span className="text-[10px] text-slate-400 md:text-right">
+                                                {spec.notes}
+                                              </span>
+                                            )}
+                                          </span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
                               ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {selectedAsset && (
-                    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40">
-                      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-slate-200 max-h-[80vh] overflow-hidden flex flex-col">
-                        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50">
-                          <div>
-                            <h3 className="text-sm font-semibold text-slate-900 truncate">
-                              {selectedAsset.asset_name}
-                            </h3>
-                            <p className="text-[11px] text-slate-500">
-                              {selectedAsset.platform} · {selectedAsset.placement} ·{' '}
-                              {selectedAsset.spec_dimensions}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedAsset(null)}
-                            className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <h4 className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-                              Spec Sheet
-                            </h4>
-                            <div className="text-[11px] text-slate-600 space-y-1">
-                              <p>
-                                <span className="font-semibold">Platform:</span> {selectedAsset.spec_details?.platform}
-                              </p>
-                              <p>
-                                <span className="font-semibold">Placement:</span>{' '}
-                                {selectedAsset.spec_details?.placement}
-                              </p>
-                              <p>
-                                <span className="font-semibold">Format:</span>{' '}
-                                {selectedAsset.spec_details?.format_name}
-                              </p>
-                              <p>
-                                <span className="font-semibold">Dimensions:</span>{' '}
-                                {selectedAsset.spec_details?.dimensions}
-                              </p>
-                              <p>
-                                <span className="font-semibold">Aspect Ratio:</span>{' '}
-                                {selectedAsset.spec_details?.aspect_ratio}
-                              </p>
-                              <p>
-                                <span className="font-semibold">Max Duration:</span>{' '}
-                                {selectedAsset.spec_details?.max_duration || 0}s
-                              </p>
-                              <p>
-                                <span className="font-semibold">File Type:</span>{' '}
-                                {selectedAsset.spec_details?.file_type}
-                              </p>
-                              {selectedAsset.spec_details?.safe_zone && (
-                                <p>
-                                  <span className="font-semibold">Safe Zone:</span>{' '}
-                                  {selectedAsset.spec_details.safe_zone}
-                                </p>
-                              )}
                             </div>
-                          </div>
-                          <div className="space-y-2">
-                            <h4 className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-                              Creative Directives
-                            </h4>
-                            <div className="space-y-1 text-[11px] text-slate-700">
-                              <p>
-                                <span className="font-semibold">Visual Directive:</span>
-                                <br />
-                                {selectedAsset.visual_directive}
-                              </p>
-                              <p>
-                                <span className="font-semibold">Copy Headline:</span>
-                                <br />
-                                {selectedAsset.copy_headline}
-                              </p>
-                              {selectedAsset.source_asset_requirements && (
-                                <p>
-                                  <span className="font-semibold">Source Requirements:</span>
-                                  <br />
-                                  {selectedAsset.source_asset_requirements}
-                                </p>
-                              )}
-                              {selectedAsset.adaptation_instruction && (
-                                <p>
-                                  <span className="font-semibold">Adaptation Instruction:</span>
-                                  <br />
-                                  {selectedAsset.adaptation_instruction}
-                                </p>
-                              )}
-                              {selectedAsset.file_url && (
-                                <p>
-                                  <span className="font-semibold">File URL:</span>
-                                  <br />
-                                  {selectedAsset.file_url}
-                                </p>
-                              )}
-                            </div>
-                            <div className="mt-3 space-y-1">
-                              <span className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-                                Status
-                              </span>
-                              <div className="flex flex-wrap gap-2">
-                                {['Todo', 'In_Progress', 'Review', 'Approved'].map((s) => (
-                                  <button
-                                    key={s}
-                                    type="button"
-                                    onClick={() => updateProductionStatus(selectedAsset.id, s)}
-                                    className={`px-2.5 py-1 text-[11px] rounded-full border ${
-                                      selectedAsset.status === s
-                                        ? 'border-teal-500 bg-teal-50 text-teal-700'
-                                        : 'border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700'
-                                    }`}
-                                  >
-                                    {s === 'In_Progress' ? 'In Progress' : s}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 text-[10px] text-slate-500 flex justify-between">
-                          <span>
-                            Batch: {productionBatch?.batch_name} · Campaign: {productionBatch?.campaign_id}
-                          </span>
+                          )}
                         </div>
                       </div>
                     </div>
-                  )}
+
+                    {builderJobs.length > 0 && (
+                      <div className="pt-3 border-t border-slate-200 space-y-2">
+                        <h4 className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                          Consolidated Production Jobs
+                        </h4>
+                        <p className="text-[11px] text-slate-500 max-w-2xl">
+                          Each row is one master asset to be produced, with multiple downstream
+                          delivery destinations grouped by shared physical specs. Add requirements
+                          and a simple status so producers can see what needs to be built and where
+                          it stands.
+                        </p>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-[11px]">
+                            <thead>
+                              <tr className="text-left text-slate-500 border-b border-slate-200">
+                                <th className="py-1.5 pr-4 font-semibold">Production Asset</th>
+                                <th className="py-1.5 pr-4 font-semibold">Tech Specs</th>
+                                <th className="py-1.5 pr-4 font-semibold">Destinations</th>
+                                <th className="py-1.5 pr-4 font-semibold">Requirements</th>
+                                <th className="py-1.5 pr-4 font-semibold">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {builderJobs.map((job) => {
+                                const uniqueNotes = Array.from(
+                                  new Set(job.destinations.map((d) => d.special_notes).filter(Boolean)),
+                                );
+                                const effectiveStatus = jobStatuses[job.job_id] ?? job.status;
+                                const requirementsValue = jobRequirements[job.job_id] ?? '';
+                                return (
+                                  <tr key={job.job_id} className="border-b border-slate-100 align-top">
+                                    <td className="py-1.5 pr-4">
+                                      <div className="font-semibold text-slate-800">
+                                        {job.asset_type} – {job.creative_concept}
+                                      </div>
+                                      <div className="text-[10px] text-slate-400">{job.job_id}</div>
+                                    </td>
+                                    <td className="py-1.5 pr-4 text-slate-700">
+                                      {job.technical_summary}
+                                    </td>
+                                    <td className="py-1.5 pr-4">
+                                      <div className="flex flex-wrap gap-1">
+                                        {job.destinations.map((dest) => (
+                                          <span
+                                            key={`${job.job_id}-${dest.spec_id}-${dest.platform_name}`}
+                                            className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px]"
+                                          >
+                                            {dest.platform_name}{' '}
+                                            <span className="text-slate-400">
+                                              · {dest.format_name}
+                                            </span>
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </td>
+                                    <td className="py-1.5 pr-4 text-slate-700">
+                                      <textarea
+                                        className="w-full min-w-[220px] text-[11px] border border-slate-300 rounded-md px-2 py-1 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                        rows={3}
+                                        placeholder={
+                                          uniqueNotes.length
+                                            ? `Key cautions: ${uniqueNotes.join(' | ')}`
+                                            : 'Capture source asset requirements, editing notes, or handoff details.'
+                                        }
+                                        value={requirementsValue}
+                                        onChange={(e) =>
+                                          setJobRequirements((prev) => ({
+                                            ...prev,
+                                            [job.job_id]: e.target.value,
+                                          }))
+                                        }
+                                      />
+                                    </td>
+                                    <td className="py-1.5 pr-4 text-slate-700">
+                                      <select
+                                        className="text-[11px] border border-slate-300 rounded-full px-2 py-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                        value={effectiveStatus}
+                                        onChange={(e) =>
+                                          setJobStatuses((prev) => ({
+                                            ...prev,
+                                            [job.job_id]: e.target.value,
+                                          }))
+                                        }
+                                      >
+                                        <option value="Pending">Pending</option>
+                                        <option value="In-Production">In Production</option>
+                                        <option value="Approved">Approved</option>
+                                      </select>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Existing Production Matrix – asset-level kitchen tickets */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Production Matrix
+                        </h3>
+                        <p className="text-[11px] text-slate-500 max-w-xl">
+                          Generate and manage the Bill of Materials for this campaign. Each card is a
+                          single asset to be built, with full spec details for editors and producers.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={generateProductionPlan}
+                        disabled={productionLoading}
+                        className="px-4 py-2 text-xs font-semibold rounded-full bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
+                      >
+                        {productionLoading
+                          ? 'Generating…'
+                          : productionBatch
+                          ? 'Regenerate Plan'
+                          : 'Generate Plan'}
+                      </button>
+                    </div>
+                    {productionError && (
+                      <p className="text-[11px] text-red-500">{productionError}</p>
+                    )}
+                    {!productionBatch || productionAssets.length === 0 ? (
+                      <div className="mt-12 flex flex-col items-center justify-center text-center text-slate-400 gap-3">
+                        <p className="text-sm max-w-xs">
+                          Start by generating a production plan from the first Strategy card and Concept.
+                          You can then move assets through Todo → In Progress → In Review → Approved.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {['Todo', 'In_Progress', 'Review', 'Approved'].map((col) => (
+                          <div
+                            key={col}
+                            className="bg-white border border-slate-200 rounded-xl p-3 flex flex-col gap-2"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                                {col === 'In_Progress'
+                                  ? 'In Progress'
+                                  : col === 'Review'
+                                  ? 'In Review'
+                                  : col}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                {productionAssets.filter((a) => a.status === col).length}
+                              </span>
+                            </div>
+                            <div className="space-y-2">
+                              {productionAssets
+                                .filter((a) => a.status === col)
+                                .map((asset) => (
+                                  <button
+                                    key={asset.id}
+                                    type="button"
+                                    onClick={() => setSelectedAsset(asset)}
+                                    className="w-full text-left bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 hover:border-teal-400 hover:bg-teal-50 transition-colors"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <p className="text-[11px] font-semibold text-slate-800 truncate">
+                                          {asset.asset_name}
+                                        </p>
+                                        <p className="text-[10px] text-slate-500 truncate">
+                                          {asset.platform} · {asset.placement}
+                                        </p>
+                                      </div>
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 capitalize">
+                                        {asset.asset_type}
+                                      </span>
+                                    </div>
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {selectedAsset && (
+                      <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40">
+                        <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-slate-200 max-h-[80vh] overflow-hidden flex flex-col">
+                          <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50">
+                            <div>
+                              <h3 className="text-sm font-semibold text-slate-900 truncate">
+                                {selectedAsset.asset_name}
+                              </h3>
+                              <p className="text-[11px] text-slate-500">
+                                {selectedAsset.platform} · {selectedAsset.placement} ·{' '}
+                                {selectedAsset.spec_dimensions}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAsset(null)}
+                              className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="flex-1 overflow-y-auto px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <h4 className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                                Spec Sheet
+                              </h4>
+                              <div className="text-[11px] text-slate-600 space-y-1">
+                                <p>
+                                  <span className="font-semibold">Platform:</span>{' '}
+                                  {selectedAsset.spec_details?.platform}
+                                </p>
+                                <p>
+                                  <span className="font-semibold">Placement:</span>{' '}
+                                  {selectedAsset.spec_details?.placement}
+                                </p>
+                                <p>
+                                  <span className="font-semibold">Format:</span>{' '}
+                                  {selectedAsset.spec_details?.format_name}
+                                </p>
+                                <p>
+                                  <span className="font-semibold">Dimensions:</span>{' '}
+                                  {selectedAsset.spec_details?.dimensions}
+                                </p>
+                                <p>
+                                  <span className="font-semibold">Aspect Ratio:</span>{' '}
+                                  {selectedAsset.spec_details?.aspect_ratio}
+                                </p>
+                                <p>
+                                  <span className="font-semibold">Max Duration:</span>{' '}
+                                  {selectedAsset.spec_details?.max_duration || 0}s
+                                </p>
+                                <p>
+                                  <span className="font-semibold">File Type:</span>{' '}
+                                  {selectedAsset.spec_details?.file_type}
+                                </p>
+                                {selectedAsset.spec_details?.safe_zone && (
+                                  <p>
+                                    <span className="font-semibold">Safe Zone:</span>{' '}
+                                    {selectedAsset.spec_details.safe_zone}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <h4 className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                                Creative Directives
+                              </h4>
+                              <div className="space-y-1 text-[11px] text-slate-700">
+                                <p>
+                                  <span className="font-semibold">Visual Directive:</span>
+                                  <br />
+                                  {selectedAsset.visual_directive}
+                                </p>
+                                <p>
+                                  <span className="font-semibold">Copy Headline:</span>
+                                  <br />
+                                  {selectedAsset.copy_headline}
+                                </p>
+                                {selectedAsset.source_asset_requirements && (
+                                  <p>
+                                    <span className="font-semibold">Source Requirements:</span>
+                                    <br />
+                                    {selectedAsset.source_asset_requirements}
+                                  </p>
+                                )}
+                                {selectedAsset.adaptation_instruction && (
+                                  <p>
+                                    <span className="font-semibold">Adaptation Instruction:</span>
+                                    <br />
+                                    {selectedAsset.adaptation_instruction}
+                                  </p>
+                                )}
+                                {selectedAsset.file_url && (
+                                  <p>
+                                    <span className="font-semibold">File URL:</span>
+                                    <br />
+                                    {selectedAsset.file_url}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="mt-3 space-y-1">
+                                <span className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                                  Status
+                                </span>
+                                <div className="flex flex-wrap gap-2">
+                                  {['Todo', 'In_Progress', 'Review', 'Approved'].map((s) => (
+                                    <button
+                                      key={s}
+                                      type="button"
+                                      onClick={() => updateProductionStatus(selectedAsset.id, s)}
+                                      className={`px-2.5 py-1 text-[11px] rounded-full border ${
+                                        selectedAsset.status === s
+                                          ? 'border-teal-500 bg-teal-50 text-teal-700'
+                                          : 'border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700'
+                                      }`}
+                                    >
+                                      {s === 'In_Progress' ? 'In Progress' : s}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 text-[10px] text-slate-500 flex justify-between">
+                            <span>
+                              Batch: {productionBatch?.batch_name} · Campaign: {productionBatch?.campaign_id}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

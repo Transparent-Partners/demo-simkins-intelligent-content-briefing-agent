@@ -5,12 +5,15 @@ from pydantic import BaseModel
 
 from app.models.production_matrix import ProductionAsset, ProductionBatch
 from app.schemas.concepts import CreativeConcept
+from app.schemas.production_matrix import ProductionJob
 from app.schemas.strategic_matrix import StrategicMatrixRow
+from app.services.matrix_builder import MatrixBuilder
 from app.services.matrix_generator import (
     generate_production_plan,
     get_batch,
     update_asset_status,
 )
+from app.services.spec_service import get_all_specs
 
 
 router = APIRouter()
@@ -41,6 +44,23 @@ class UpdateStatusRequest(BaseModel):
 
 class UpdateStatusResponse(BaseModel):
     asset: ProductionAsset
+
+
+class MatrixBuilderRequest(BaseModel):
+    """
+    Frontend payload for the Production Matrix Builder.
+
+    The UI selects one creative concept label and a set of spec IDs
+    (from the spec library). The backend then groups those specs into
+    consolidated ProductionJob tickets.
+    """
+
+    creative_concept: str
+    spec_ids: List[str]
+
+
+class MatrixBuilderResponse(BaseModel):
+    jobs: List[ProductionJob]
 
 
 @router.post("/generate", response_model=GenerateProductionResponse)
@@ -85,5 +105,42 @@ async def patch_asset_status(
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     return UpdateStatusResponse(asset=asset)
+
+
+@router.post("/builder/jobs", response_model=MatrixBuilderResponse)
+async def build_production_jobs(payload: MatrixBuilderRequest) -> MatrixBuilderResponse:
+    """
+    Production Matrix Builder endpoint.
+
+    - Looks up the selected specs from the Spec Library (by ID).
+    - Uses MatrixBuilder to collapse redundant specs into master ProductionJobs.
+    - Returns the consolidated job list for display in the UI.
+
+    Note: For this POC, jobs are not persisted to a real database; the
+    frontend treats the response as the current working plan.
+    """
+    try:
+        all_specs = get_all_specs()
+        spec_by_id = {spec.id: spec for spec in all_specs}
+
+        selected_specs: List[dict] = []
+        for sid in payload.spec_ids:
+            spec = spec_by_id.get(sid)
+            if spec:
+                selected_specs.append(spec.model_dump())
+
+        if not selected_specs:
+            raise HTTPException(status_code=400, detail="No valid specs found for the provided spec_ids.")
+
+        builder = MatrixBuilder()
+        jobs = builder.group_specs_by_creative(
+            selected_specs=selected_specs,
+            creative_concept=payload.creative_concept,
+        )
+        return MatrixBuilderResponse(jobs=jobs)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
