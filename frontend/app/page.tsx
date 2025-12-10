@@ -2,7 +2,10 @@
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+// Default to same-origin in the browser; fall back to localhost for local dev/server-side
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (typeof window === 'undefined' ? 'http://localhost:8000' : '');
 
 type Message = {
   role: 'user' | 'assistant';
@@ -1681,15 +1684,41 @@ export default function Home() {
     setLoadingSpecs(true);
     setSpecsError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/specs`);
-      if (!res.ok) {
-        throw new Error(`Failed to load specs: ${res.status}`);
+      // Try primary base URL first; fall back to same-origin if base is missing/unreachable
+      const candidates = [
+        `${API_BASE_URL}/specs`.replace(/\/{2,}/g, '/').replace('http:/', 'http://').replace('https:/', 'https://'),
+        '/specs',
+      ];
+
+      let fetched: Spec[] | null = null;
+      let lastError: any = null;
+
+      for (const url of candidates) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) {
+            lastError = new Error(`Failed to load specs: ${res.status}`);
+            continue;
+          }
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            fetched = data;
+            break;
+          }
+        } catch (err) {
+          lastError = err;
+        }
       }
-      const data = await res.json();
-      if (Array.isArray(data) && data.length) {
-        setSpecs(data);
+
+      if (fetched && fetched.length) {
+        setSpecs(fetched);
       } else {
         setSpecs([]);
+        if (lastError) {
+          throw lastError;
+        } else {
+          throw new Error('No specs returned from API.');
+        }
       }
     } catch (e: any) {
       setSpecsError(e?.message ?? 'Unable to load specs.');
