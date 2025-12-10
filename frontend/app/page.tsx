@@ -495,9 +495,28 @@ const PRESET_SPECS: Spec[] = [
   // Google Display / Open Web (IAB)
   { id: 'GDN_MPU_300x250', platform: 'Open Web', placement: 'MPU', width: 300, height: 250, orientation: 'Rectangle', media_type: 'image_or_html5', notes: 'Max 150kb; logo + short CTA.' },
   { id: 'GDN_LEADERBOARD_728x90', platform: 'Open Web', placement: 'Leaderboard', width: 728, height: 90, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Tight height; prioritize logo + CTA.' },
+  { id: 'GDN_SUPER_LEADERBOARD_970x90', platform: 'Open Web', placement: 'Super Leaderboard', width: 970, height: 90, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Wide canvas; maintain safe margins for responsive resize.' },
   { id: 'GDN_HALF_PAGE_300x600', platform: 'Open Web', placement: 'Half Page', width: 300, height: 600, orientation: 'Vertical', media_type: 'image_or_html5', notes: 'Tall canvas; hook in top half.' },
   { id: 'GDN_BILLBOARD_970x250', platform: 'Open Web', placement: 'Billboard', width: 970, height: 250, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Hero-friendly; maintain safe margins.' },
+  { id: 'GDN_SKYSCRAPER_160x600', platform: 'Open Web', placement: 'Wide Skyscraper', width: 160, height: 600, orientation: 'Vertical', media_type: 'image_or_html5', notes: 'Stack vertically; avoid dense copy at bottom.' },
+  { id: 'GDN_MED_RECT_336x280', platform: 'Open Web', placement: 'Med Rectangle', width: 336, height: 280, orientation: 'Rectangle', media_type: 'image_or_html5', notes: 'Larger MPU variant; keep hierarchy simple.' },
+  { id: 'GDN_SQUARE_250x250', platform: 'Open Web', placement: 'Square', width: 250, height: 250, orientation: 'Square', media_type: 'image_or_html5', notes: 'Compact square; minimal copy.' },
   { id: 'GDN_MOBILE_LEADERBOARD_320x50', platform: 'Open Web', placement: 'Mobile Leaderboard', width: 320, height: 50, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Extremely short; logo + 1-2 words.' },
+  { id: 'GDN_MOBILE_LARGE_320x100', platform: 'Open Web', placement: 'Mobile Banner', width: 320, height: 100, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'More vertical room than 320x50; keep concise CTA.' },
+  { id: 'GDN_MOBILE_BANNER_300x50', platform: 'Open Web', placement: 'Mobile Banner 300x50', width: 300, height: 50, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Small; favor logo + CTA only.' },
+  { id: 'GDN_BANNER_468x60', platform: 'Open Web', placement: 'Banner 468x60', width: 468, height: 60, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Legacy size; keep elements centered.' },
+  // CTV
+  { id: 'CTV_FULLSCREEN_16x9', platform: 'CTV', placement: 'Full Screen', width: 1920, height: 1080, orientation: 'Horizontal', media_type: 'video', notes: 'TV-safe framing; allow overscan margins.' },
+  { id: 'CTV_QUARTERSCREEN_16x9', platform: 'CTV', placement: 'Quarter Screen Overlay', width: 960, height: 540, orientation: 'Horizontal', media_type: 'video_or_image', notes: 'Overlay; avoid lower-third UI.' },
+  { id: 'CTV_SLATE_16x9', platform: 'CTV', placement: 'End Slate', width: 1920, height: 1080, orientation: 'Horizontal', media_type: 'video_or_image', notes: '3-5s slate; large CTA and URL.' },
+  // Mobile (IAB New Ad Portfolio common units)
+  { id: 'MOB_INLINE_RECT_300x250', platform: 'Mobile', placement: 'Inline Rectangle', width: 300, height: 250, orientation: 'Rectangle', media_type: 'image_or_html5', notes: 'Inline mobile rectangle; common in content feeds.' },
+  { id: 'MOB_BANNER_320x50', platform: 'Mobile', placement: 'Standard Banner', width: 320, height: 50, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Standard mobile banner; ultra-limited height.' },
+  { id: 'MOB_LARGE_BANNER_320x100', platform: 'Mobile', placement: 'Large Banner', width: 320, height: 100, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'More height for clearer CTA.' },
+  { id: 'MOB_FULLPAGE_PORTRAIT_320x480', platform: 'Mobile', placement: 'Fullscreen Portrait', width: 320, height: 480, orientation: 'Vertical', media_type: 'image_or_html5', notes: 'Fullscreen interstitial; respect app safe areas.' },
+  { id: 'MOB_FULLPAGE_LANDSCAPE_480x320', platform: 'Mobile', placement: 'Fullscreen Landscape', width: 480, height: 320, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Landscape interstitial; avoid edge-hugging CTAs.' },
+  { id: 'MOB_TABLET_PORTRAIT_768x1024', platform: 'Mobile', placement: 'Tablet Portrait', width: 768, height: 1024, orientation: 'Vertical', media_type: 'image_or_html5', notes: 'Tablet portrait; maintain generous padding.' },
+  { id: 'MOB_TABLET_LANDSCAPE_1024x768', platform: 'Mobile', placement: 'Tablet Landscape', width: 1024, height: 768, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Tablet landscape; keep focal area centered.' },
 ];
 
 const HISTORICAL_BRIEFS: HistoricalBrief[] = [
@@ -2824,7 +2843,6 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
-
                   {loadingSpecs && <p className="text-[11px] text-slate-400">Loading specs…</p>}
                   {specsError && (
                     <p className="text-[11px] text-red-500">
