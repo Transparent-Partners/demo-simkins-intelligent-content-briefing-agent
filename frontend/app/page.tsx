@@ -735,6 +735,7 @@ export default function Home() {
   const [showSpecCreator, setShowSpecCreator] = useState(false);
   const [productionTab, setProductionTab] = useState<'requirements' | 'specLibrary'>('requirements');
   const [pendingDestAudience, setPendingDestAudience] = useState<{ [rowId: string]: string }>({});
+  const [showPlan, setShowPlan] = useState(false);
   const [productionMatrixRows, setProductionMatrixRows] = useState<ProductionMatrixLine[]>([
     {
       id: 'PR-001',
@@ -2606,315 +2607,333 @@ export default function Home() {
 
               {workspaceView === 'production' && productionTab === 'requirements' && (
                 <div className="space-y-4">
-                  {/* Line-by-line Production Requirements Matrix */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                          Production Requirements Matrix
-                        </h3>
-                        <p className="text-[11px] text-slate-500 max-w-xl">
-                          Connect audiences to concepts and specs line-by-line. This feeds the production list builder without a traffic sheet.
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={addProductionMatrixRow}
-                          className="px-3 py-1.5 text-[11px] rounded-full border border-teal-500 text-teal-700 bg-teal-50 hover:bg-teal-100"
-                        >
-                          + Add row
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setProductionTab('specLibrary')}
-                          className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
-                        >
-                          Manage specs →
-                        </button>
-                      </div>
+                  <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-4">
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Plan (Audience → Concept → Spec)
+                      </h3>
+                      <p className="text-[11px] text-slate-500 max-w-xl">
+                        Optional planning table that feeds the production jobs. Collapse if you prefer to work only from jobs.
+                      </p>
                     </div>
-                    <div className="overflow-auto border border-slate-200 rounded-lg">
-                      <table className="w-full text-[11px] min-w-[900px]">
-                        <thead className="bg-slate-50 text-slate-600 uppercase tracking-wide text-[10px]">
-                          <tr>
-                            <th className="px-3 py-2 text-left">Audience</th>
-                            <th className="px-3 py-2 text-left">Concept</th>
-                            <th className="px-3 py-2 text-left">Spec</th>
-                            <th className="px-3 py-2 text-left">Destinations (by spec)</th>
-                            <th className="px-3 py-2 text-left">Feed?</th>
-                            <th className="px-3 py-2 text-left">Feed Template</th>
-                            <th className="px-3 py-2 text-left">Template ID</th>
-                            <th className="px-3 py-2 text-left">Feed ID</th>
-                            <th className="px-3 py-2 text-left">Feed Asset ID</th>
-                            <th className="px-3 py-2 text-left">Production Details (non-feed)</th>
-                            <th className="px-3 py-2 text-left">Notes</th>
-                            <th className="px-3 py-2 text-right"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {productionMatrixRows.map((row, index) => {
-                            const specOptions = specs;
-                            return (
-                              <tr key={row.id} className="border-t border-slate-100">
-                                <td className="px-3 py-2 align-top">
-                                  <input
-                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                    value={row.audience}
-                                    onChange={(e) => updateProductionMatrixCell(index, 'audience', e.target.value)}
-                                    placeholder="Audience / cohort"
-                                  />
-                                </td>
-                                <td className="px-3 py-2 align-top">
-                                  <select
-                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                    value={row.concept_id}
-                                    onChange={(e) => updateProductionMatrixCell(index, 'concept_id', e.target.value)}
-                                  >
-                                    <option value="">Select concept</option>
-                                    {concepts.map((c) => (
-                                      <option key={c.id} value={c.id}>
-                                        {c.title || c.id}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td className="px-3 py-2 align-top">
-                                  <select
-                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                    value={row.spec_id}
-                                    onChange={(e) => {
-                                      const nextSpecId = e.target.value;
-                                      updateProductionMatrixCell(index, 'spec_id', nextSpecId);
-                                      const selectedSpec = specs.find((s) => s.id === nextSpecId);
-                                      if (selectedSpec) {
-                                        const destEntry: DestinationEntry = {
-                                          name: `${selectedSpec.platform} · ${selectedSpec.placement}`,
-                                        };
-                                        updateProductionMatrixCell(index, 'destinations', [destEntry]);
-                                      }
-                                    }}
-                                  >
-                                    <option value="">Select spec</option>
-                                    {specOptions.map((spec) => (
-                                      <option key={spec.id} value={spec.id}>
-                                        {spec.platform} · {spec.placement} ({spec.width}x{spec.height})
-                                      </option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td className="px-3 py-2 align-top space-y-2">
-                                  <div className="flex flex-wrap gap-1">
-                                    {(row.destinations || []).map((dest) => (
-                                      <span
-                                        key={`${dest.name}-${dest.audience || 'any'}`}
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px]"
-                                      >
-                                        {dest.name}
-                                        {dest.audience && (
-                                          <span className="text-amber-700 bg-amber-50 px-1 rounded">
-                                            {dest.audience}
-                                          </span>
-                                        )}
-                                        <button
-                                          type="button"
-                                          onClick={() => removeDestinationFromRow(index, dest.name)}
-                                          className="text-slate-400 hover:text-red-500"
-                                        >
-                                          ×
-                                        </button>
-                                      </span>
-                                    ))}
-                                    {!row.destinations || row.destinations.length === 0 ? (
-                                      <span className="text-[10px] text-slate-400">None yet</span>
-                                    ) : null}
-                                  </div>
-                                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPlan((prev) => !prev)}
+                      className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
+                    >
+                      {showPlan ? 'Hide plan' : 'Show plan'}
+                    </button>
+                  </div>
+
+                  {showPlan && (
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            Production Requirements Matrix
+                          </h3>
+                          <p className="text-[11px] text-slate-500 max-w-xl">
+                            Connect audiences to concepts and specs line-by-line. This feeds the production list builder without a traffic sheet.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={addProductionMatrixRow}
+                            className="px-3 py-1.5 text-[11px] rounded-full border border-teal-500 text-teal-700 bg-teal-50 hover:bg-teal-100"
+                          >
+                            + Add row
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setProductionTab('specLibrary')}
+                            className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
+                          >
+                            Manage specs →
+                          </button>
+                        </div>
+                      </div>
+                      <div className="overflow-auto border border-slate-200 rounded-lg">
+                        <table className="w-full text-[11px] min-w-[900px]">
+                          <thead className="bg-slate-50 text-slate-600 uppercase tracking-wide text-[10px]">
+                            <tr>
+                              <th className="px-3 py-2 text-left">Audience</th>
+                              <th className="px-3 py-2 text-left">Concept</th>
+                              <th className="px-3 py-2 text-left">Spec</th>
+                              <th className="px-3 py-2 text-left">Destinations (by spec)</th>
+                              <th className="px-3 py-2 text-left">Feed?</th>
+                              <th className="px-3 py-2 text-left">Feed Template</th>
+                              <th className="px-3 py-2 text-left">Template ID</th>
+                              <th className="px-3 py-2 text-left">Feed ID</th>
+                              <th className="px-3 py-2 text-left">Feed Asset ID</th>
+                              <th className="px-3 py-2 text-left">Production Details (non-feed)</th>
+                              <th className="px-3 py-2 text-left">Notes</th>
+                              <th className="px-3 py-2 text-right"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {productionMatrixRows.map((row, index) => {
+                              const specOptions = specs;
+                              return (
+                                <tr key={row.id} className="border-t border-slate-100">
+                                  <td className="px-3 py-2 align-top">
+                                    <input
+                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                      value={row.audience}
+                                      onChange={(e) => updateProductionMatrixCell(index, 'audience', e.target.value)}
+                                      placeholder="Audience / cohort"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2 align-top">
                                     <select
-                                      className="flex-1 border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                      value=""
-                                      onChange={(e) => {
-                                        addDestinationToRow(index, e.target.value);
-                                      }}
-                                      disabled={!row.spec_id}
+                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                      value={row.concept_id}
+                                      onChange={(e) => updateProductionMatrixCell(index, 'concept_id', e.target.value)}
                                     >
-                                      <option value="">
-                                        {row.spec_id ? 'Add destination' : 'Select a spec first'}
-                                      </option>
-                                      {getDestinationOptionsForSpec(row.spec_id).map((opt) => (
-                                        <option key={opt} value={opt}>
-                                          {opt}
+                                      <option value="">Select concept</option>
+                                      {concepts.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                          {c.title || c.id}
                                         </option>
                                       ))}
                                     </select>
-                                    <input
-                                      className="flex-1 border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                      placeholder="Custom destination"
-                                      disabled={!row.spec_id}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          e.preventDefault();
-                                          const val = (e.target as HTMLInputElement).value.trim();
-                                          addDestinationToRow(index, val);
-                                          (e.target as HTMLInputElement).value = '';
+                                  </td>
+                                  <td className="px-3 py-2 align-top">
+                                    <select
+                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                      value={row.spec_id}
+                                      onChange={(e) => {
+                                        const nextSpecId = e.target.value;
+                                        updateProductionMatrixCell(index, 'spec_id', nextSpecId);
+                                        const selectedSpec = specs.find((s) => s.id === nextSpecId);
+                                        if (selectedSpec) {
+                                          const destEntry: DestinationEntry = {
+                                            name: `${selectedSpec.platform} · ${selectedSpec.placement}`,
+                                          };
+                                          updateProductionMatrixCell(index, 'destinations', [destEntry]);
                                         }
                                       }}
-                                    />
-                                  </div>
-                                  {row.destinations && row.destinations.length > 0 && (
+                                    >
+                                      <option value="">Select spec</option>
+                                      {specOptions.map((spec) => (
+                                        <option key={spec.id} value={spec.id}>
+                                          {spec.platform} · {spec.placement} ({spec.width}x{spec.height})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="px-3 py-2 align-top space-y-2">
+                                    <div className="flex flex-wrap gap-1">
+                                      {(row.destinations || []).map((dest) => (
+                                        <span
+                                          key={`${dest.name}-${dest.audience || 'any'}`}
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px]"
+                                        >
+                                          {dest.name}
+                                          {dest.audience && (
+                                            <span className="text-amber-700 bg-amber-50 px-1 rounded">
+                                              {dest.audience}
+                                            </span>
+                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={() => removeDestinationFromRow(index, dest.name)}
+                                            className="text-slate-400 hover:text-red-500"
+                                          >
+                                            ×
+                                          </button>
+                                        </span>
+                                      ))}
+                                      {!row.destinations || row.destinations.length === 0 ? (
+                                        <span className="text-[10px] text-slate-400">None yet</span>
+                                      ) : null}
+                                    </div>
                                     <div className="flex items-center gap-2">
                                       <select
                                         className="flex-1 border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                        value={pendingDestAudience[row.id] ?? ''}
-                                        onChange={(e) =>
-                                          setPendingDestAudience((prev) => ({ ...prev, [row.id]: e.target.value }))
-                                        }
-                                      >
-                                        <option value="">Audience tag (optional)</option>
-                                        <option value="Prospecting">Prospecting</option>
-                                        <option value="Retargeting">Retargeting</option>
-                                        <option value="Loyalty">Loyalty</option>
-                                        <option value="B2B">B2B</option>
-                                        <option value="B2C">B2C</option>
-                                      </select>
-                                      <button
-                                        type="button"
-                                        className="px-2 py-1 text-[10px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
-                                        onClick={() => {
-                                          const audienceTag = (pendingDestAudience[row.id] || '').trim();
-                                          if (!audienceTag) return;
-                                          // Apply to the last added destination
-                                          setProductionMatrixRows((prev) =>
-                                            prev.map((r) => {
-                                              if (r.id !== row.id) return r;
-                                              if (!r.destinations || r.destinations.length === 0) return r;
-                                              const nextDests = [...r.destinations];
-                                              nextDests[nextDests.length - 1] = {
-                                                ...nextDests[nextDests.length - 1],
-                                                audience: audienceTag,
-                                              };
-                                              return { ...r, destinations: nextDests };
-                                            }),
-                                          );
+                                        value=""
+                                        onChange={(e) => {
+                                          addDestinationToRow(index, e.target.value);
                                         }}
+                                        disabled={!row.spec_id}
                                       >
-                                        Tag last
-                                      </button>
+                                        <option value="">
+                                          {row.spec_id ? 'Add destination' : 'Select a spec first'}
+                                        </option>
+                                        {getDestinationOptionsForSpec(row.spec_id).map((opt) => (
+                                          <option key={opt} value={opt}>
+                                            {opt}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        className="flex-1 border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                        placeholder="Custom destination"
+                                        disabled={!row.spec_id}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            const val = (e.target as HTMLInputElement).value.trim();
+                                            addDestinationToRow(index, val);
+                                            (e.target as HTMLInputElement).value = '';
+                                          }
+                                        }}
+                                      />
                                     </div>
-                                  )}
-                                  <p className="text-[10px] text-slate-400">
-                                    Destinations filtered by spec’s platform; add multiples per asset and optionally tag audience.
-                                  </p>
-                                </td>
-                                <td className="px-3 py-2 align-top text-center">
-                                  <input
-                                    type="checkbox"
-                                    className="h-3 w-3 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                                    checked={row.is_feed}
-                                    onChange={(e) => updateProductionMatrixCell(index, 'is_feed', e.target.checked)}
-                                  />
-                                </td>
-                                <td className="px-3 py-2 align-top">
-                                  {row.is_feed ? (
+                                    {row.destinations && row.destinations.length > 0 && (
+                                      <div className="flex items-center gap-2">
+                                        <select
+                                          className="flex-1 border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                          value={pendingDestAudience[row.id] ?? ''}
+                                          onChange={(e) =>
+                                            setPendingDestAudience((prev) => ({ ...prev, [row.id]: e.target.value }))
+                                          }
+                                        >
+                                          <option value="">Audience tag (optional)</option>
+                                          <option value="Prospecting">Prospecting</option>
+                                          <option value="Retargeting">Retargeting</option>
+                                          <option value="Loyalty">Loyalty</option>
+                                          <option value="B2B">B2B</option>
+                                          <option value="B2C">B2C</option>
+                                        </select>
+                                        <button
+                                          type="button"
+                                          className="px-2 py-1 text-[10px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
+                                          onClick={() => {
+                                            const audienceTag = (pendingDestAudience[row.id] || '').trim();
+                                            if (!audienceTag) return;
+                                            // Apply to the last added destination
+                                            setProductionMatrixRows((prev) =>
+                                              prev.map((r) => {
+                                                if (r.id !== row.id) return r;
+                                                if (!r.destinations || r.destinations.length === 0) return r;
+                                                const nextDests = [...r.destinations];
+                                                nextDests[nextDests.length - 1] = {
+                                                  ...nextDests[nextDests.length - 1],
+                                                  audience: audienceTag,
+                                                };
+                                                return { ...r, destinations: nextDests };
+                                              }),
+                                            );
+                                          }}
+                                        >
+                                          Tag last
+                                        </button>
+                                      </div>
+                                    )}
+                                    <p className="text-[10px] text-slate-400">
+                                      Destinations filtered by spec’s platform; add multiples per asset and optionally tag audience.
+                                    </p>
+                                  </td>
+                                  <td className="px-3 py-2 align-top text-center">
                                     <input
-                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                      value={row.feed_template}
+                                      type="checkbox"
+                                      className="h-3 w-3 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                      checked={row.is_feed}
+                                      onChange={(e) => updateProductionMatrixCell(index, 'is_feed', e.target.checked)}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2 align-top">
+                                    {row.is_feed ? (
+                                      <input
+                                        className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                        value={row.feed_template}
+                                        onChange={(e) =>
+                                          updateProductionMatrixCell(index, 'feed_template', e.target.value)
+                                        }
+                                        placeholder="Feed/DCO template name"
+                                      />
+                                    ) : (
+                                      <span className="text-[10px] text-slate-400">Toggle Feed to add</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 align-top">
+                                    {row.is_feed ? (
+                                      <input
+                                        className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                        value={row.template_id ?? ''}
+                                        onChange={(e) => updateProductionMatrixCell(index, 'template_id', e.target.value)}
+                                        placeholder="Template ID"
+                                      />
+                                    ) : (
+                                      <span className="text-[10px] text-slate-400">Feed off</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 align-top">
+                                    {row.is_feed ? (
+                                      <input
+                                        className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                        value={row.feed_id ?? ''}
+                                        onChange={(e) => updateProductionMatrixCell(index, 'feed_id', e.target.value)}
+                                        placeholder="Feed ID"
+                                      />
+                                    ) : (
+                                      <span className="text-[10px] text-slate-400">Feed off</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 align-top">
+                                    {row.is_feed ? (
+                                      <input
+                                        className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                        value={row.feed_asset_id ?? ''}
+                                        onChange={(e) =>
+                                          updateProductionMatrixCell(index, 'feed_asset_id', e.target.value)
+                                        }
+                                        placeholder="Asset ID in feed"
+                                      />
+                                    ) : (
+                                      <span className="text-[10px] text-slate-400">Feed off</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 align-top">
+                                    <textarea
+                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 resize-none"
+                                      rows={2}
+                                      value={row.production_details ?? ''}
                                       onChange={(e) =>
-                                        updateProductionMatrixCell(index, 'feed_template', e.target.value)
+                                        updateProductionMatrixCell(index, 'production_details', e.target.value)
                                       }
-                                      placeholder="Feed/DCO template name"
+                                      placeholder="For non-feed composites: file type, safe zones, animation asks."
+                                      disabled={row.is_feed}
                                     />
-                                  ) : (
-                                    <span className="text-[10px] text-slate-400">Toggle Feed to add</span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2 align-top">
-                                  {row.is_feed ? (
-                                    <input
-                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                      value={row.template_id ?? ''}
-                                      onChange={(e) => updateProductionMatrixCell(index, 'template_id', e.target.value)}
-                                      placeholder="Template ID"
+                                  </td>
+                                  <td className="px-3 py-2 align-top">
+                                    <textarea
+                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 resize-none"
+                                      rows={2}
+                                      value={row.notes}
+                                      onChange={(e) => updateProductionMatrixCell(index, 'notes', e.target.value)}
+                                      placeholder="Key guardrails / handoff notes"
                                     />
-                                  ) : (
-                                    <span className="text-[10px] text-slate-400">Feed off</span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2 align-top">
-                                  {row.is_feed ? (
-                                    <input
-                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                      value={row.feed_id ?? ''}
-                                      onChange={(e) => updateProductionMatrixCell(index, 'feed_id', e.target.value)}
-                                      placeholder="Feed ID"
-                                    />
-                                  ) : (
-                                    <span className="text-[10px] text-slate-400">Feed off</span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2 align-top">
-                                  {row.is_feed ? (
-                                    <input
-                                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                      value={row.feed_asset_id ?? ''}
-                                      onChange={(e) =>
-                                        updateProductionMatrixCell(index, 'feed_asset_id', e.target.value)
-                                      }
-                                      placeholder="Asset ID in feed"
-                                    />
-                                  ) : (
-                                    <span className="text-[10px] text-slate-400">Feed off</span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2 align-top">
-                                  <textarea
-                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 resize-none"
-                                    rows={2}
-                                    value={row.production_details ?? ''}
-                                    onChange={(e) =>
-                                      updateProductionMatrixCell(index, 'production_details', e.target.value)
-                                    }
-                                    placeholder="For non-feed composites: file type, safe zones, animation asks."
-                                    disabled={row.is_feed}
-                                  />
-                                </td>
-                                <td className="px-3 py-2 align-top">
-                                  <textarea
-                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 resize-none"
-                                    rows={2}
-                                    value={row.notes}
-                                    onChange={(e) => updateProductionMatrixCell(index, 'notes', e.target.value)}
-                                    placeholder="Key guardrails / handoff notes"
-                                  />
-                                </td>
-                                <td className="px-3 py-2 align-top text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => removeProductionMatrixRow(index)}
-                                    className="text-[11px] text-slate-400 hover:text-red-500"
-                                  >
-                                    Remove
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                                  </td>
+                                  <td className="px-3 py-2 align-top text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => removeProductionMatrixRow(index)}
+                                      className="text-[11px] text-slate-400 hover:text-red-500"
+                                    >
+                                      Remove
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Production Requirements List – concept-to-spec grouper */}
                     <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                          Production Requirements List
+                          Production Jobs
                         </h3>
                         <p className="text-[11px] text-slate-500 max-w-xl">
-                          Define which master assets are needed, where they will run, and capture
-                          high-level production requirements against each one. This is your
-                          pre-production checklist before detailed tickets are created.
+                          Execution view: the assets to build, where they go, and the requirements for each one.
+                          Driven by the plan above.
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -3100,11 +3119,10 @@ export default function Home() {
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                          Production Matrix
+                          Production Matrix (Board)
                         </h3>
                         <p className="text-[11px] text-slate-500 max-w-xl">
-                          Generate and manage the Bill of Materials for this campaign. Each card is a
-                          single asset to be built, with full spec details for editors and producers.
+                          Kanban view of the production jobs. Each card is a single asset to be built with full spec details.
                         </p>
                       </div>
                       <button
