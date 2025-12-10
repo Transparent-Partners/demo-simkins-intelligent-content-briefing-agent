@@ -165,6 +165,21 @@ type ProductionJobRow = {
   status: string;
 };
 
+type ProductionMatrixLine = {
+  id: string;
+  audience: string;
+  concept_id: string;
+  spec_id: string;
+  destinations: string; // comma-separated partners/placements
+  notes: string;
+  is_feed: boolean;
+  feed_template: string;
+  template_id?: string;
+  feed_id?: string;
+  feed_asset_id?: string;
+  production_details?: string;
+};
+
 // Feed Builder (Asset Feed) row type mirrors the Master Feed Variable Set
 type FeedRow = {
   row_id: string;
@@ -703,6 +718,50 @@ export default function Home() {
   const [createSpecError, setCreateSpecError] = useState<string | null>(null);
   const [showSpecCreator, setShowSpecCreator] = useState(false);
   const [productionTab, setProductionTab] = useState<'requirements' | 'specLibrary'>('requirements');
+  const [productionMatrixRows, setProductionMatrixRows] = useState<ProductionMatrixLine[]>([
+    {
+      id: 'PR-001',
+      audience: 'Summer Sale (Fast)',
+      concept_id: '',
+      spec_id: 'TIKTOK_IN_FEED_9x16',
+      destinations: 'TikTok, Instagram, Shorts, Snap',
+      notes: '15s vertical; keep supers high.',
+      is_feed: false,
+      feed_template: '',
+      template_id: '',
+      feed_id: '',
+      feed_asset_id: '',
+      production_details: '',
+    },
+    {
+      id: 'PR-002',
+      audience: 'Summer Sale (Fast)',
+      concept_id: '',
+      spec_id: 'YOUTUBE_INSTREAM_16x9',
+      destinations: 'YouTube, CTV, X',
+      notes: '16:9 instream cut; loud/clear open.',
+      is_feed: false,
+      feed_template: '',
+      template_id: '',
+      feed_id: '',
+      feed_asset_id: '',
+      production_details: '',
+    },
+    {
+      id: 'PR-003',
+      audience: 'Summer Sale (Slow)',
+      concept_id: '',
+      spec_id: 'META_FEED_1x1',
+      destinations: 'Meta Feed, LinkedIn, Display',
+      notes: 'Static JPG; simple offer lockup.',
+      is_feed: false,
+      feed_template: '',
+      template_id: '',
+      feed_id: '',
+      feed_asset_id: '',
+      production_details: '',
+    },
+  ]);
   const [feedFields, setFeedFields] = useState<FeedFieldConfig[]>(BASE_FEED_FIELDS);
   const [visibleFeedFields, setVisibleFeedFields] = useState<FeedFieldKey[]>(
     BASE_FEED_FIELDS.map((f) => f.key).filter((key) => key !== 'date_start' && key !== 'date_end'),
@@ -1521,6 +1580,42 @@ export default function Home() {
     });
   }
 
+  const addProductionMatrixRow = () => {
+    const nextId = `PR-${(productionMatrixRows.length + 1).toString().padStart(3, '0')}`;
+    const defaultConceptId = concepts[0]?.id ?? '';
+    setProductionMatrixRows((prev) => [
+      ...prev,
+      {
+        id: nextId,
+        audience: '',
+        concept_id: defaultConceptId,
+        spec_id: '',
+        destinations: '',
+        notes: '',
+        is_feed: false,
+        feed_template: '',
+        template_id: '',
+        feed_id: '',
+        feed_asset_id: '',
+        production_details: '',
+      },
+    ]);
+  };
+
+  const updateProductionMatrixCell = (
+    index: number,
+    field: keyof ProductionMatrixLine,
+    value: string | boolean,
+  ) => {
+    setProductionMatrixRows((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
+    );
+  };
+
+  const removeProductionMatrixRow = (index: number) => {
+    setProductionMatrixRows((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const sendSpecsToProduction = () => {
     // Move to the Requirements tab and, if possible, generate jobs immediately.
     setProductionTab('requirements');
@@ -1532,6 +1627,45 @@ export default function Home() {
   };
 
   async function generateProductionJobsFromBuilder() {
+    // If rows exist, prefer local matrix-based generation
+    if (productionMatrixRows.length > 0) {
+      const jobs: ProductionJobRow[] = [];
+      productionMatrixRows.forEach((row, idx) => {
+        const spec = specs.find((s) => s.id === row.spec_id);
+        const concept = concepts.find((c) => c.id === row.concept_id);
+        const conceptLabel = concept?.title || concept?.description || concept?.id || 'Untitled Concept';
+        const specLabel = spec ? `${spec.width}x${spec.height} ${spec.media_type}` : 'Spec not set';
+        const metaSuffixParts = [];
+        if (row.template_id) metaSuffixParts.push(`template:${row.template_id}`);
+        if (row.feed_id) metaSuffixParts.push(`feed:${row.feed_id}`);
+        if (row.feed_asset_id) metaSuffixParts.push(`asset:${row.feed_asset_id}`);
+        if (row.production_details && !row.is_feed) metaSuffixParts.push(`build:${row.production_details}`);
+        const metaSuffix = metaSuffixParts.length ? ` [${metaSuffixParts.join(' | ')}]` : '';
+        const destinations = row.destinations
+          .split(',')
+          .map((d) => d.trim())
+          .filter(Boolean)
+          .map((d) => ({
+            platform_name: d,
+            spec_id: spec?.id || row.spec_id || `SPEC-${idx + 1}`,
+            format_name: spec?.placement || spec?.media_type || '',
+            special_notes: row.notes,
+          }));
+        jobs.push({
+          job_id: row.id || `JOB-${idx + 1}`,
+          creative_concept: conceptLabel,
+          asset_type: spec?.media_type || 'asset',
+          destinations,
+          technical_summary: `${specLabel}${metaSuffix}`,
+          status: 'Pending',
+        });
+      });
+      setBuilderJobs(jobs);
+      setBuilderError(null);
+      setProductionTab('requirements');
+      return;
+    }
+
     if (!builderSelectedConceptId || builderSelectedSpecIds.length === 0) return;
 
     const concept = concepts.find((c) => c.id === builderSelectedConceptId);
@@ -2425,8 +2559,191 @@ export default function Home() {
 
               {workspaceView === 'production' && productionTab === 'requirements' && (
                 <div className="space-y-4">
+                  {/* Line-by-line Production Requirements Matrix */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Production Requirements Matrix
+                        </h3>
+                        <p className="text-[11px] text-slate-500 max-w-xl">
+                          Connect audiences to concepts and specs line-by-line. This feeds the production list builder without a traffic sheet.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={addProductionMatrixRow}
+                          className="px-3 py-1.5 text-[11px] rounded-full border border-teal-500 text-teal-700 bg-teal-50 hover:bg-teal-100"
+                        >
+                          + Add row
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProductionTab('specLibrary')}
+                          className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
+                        >
+                          Manage specs →
+                        </button>
+                      </div>
+                    </div>
+                    <div className="overflow-auto border border-slate-200 rounded-lg">
+                      <table className="w-full text-[11px] min-w-[900px]">
+                        <thead className="bg-slate-50 text-slate-600 uppercase tracking-wide text-[10px]">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Audience</th>
+                            <th className="px-3 py-2 text-left">Concept</th>
+                            <th className="px-3 py-2 text-left">Spec</th>
+                            <th className="px-3 py-2 text-left">Destinations</th>
+                            <th className="px-3 py-2 text-left">Feed?</th>
+                            <th className="px-3 py-2 text-left">Feed Template</th>
+                            <th className="px-3 py-2 text-left">Template ID</th>
+                            <th className="px-3 py-2 text-left">Feed ID</th>
+                            <th className="px-3 py-2 text-left">Feed Asset ID</th>
+                            <th className="px-3 py-2 text-left">Production Details (non-feed)</th>
+                            <th className="px-3 py-2 text-left">Notes</th>
+                            <th className="px-3 py-2 text-right"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {productionMatrixRows.map((row, index) => {
+                            const specOptions = specs;
+                            return (
+                              <tr key={row.id} className="border-t border-slate-100">
+                                <td className="px-3 py-2 align-top">
+                                  <input
+                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    value={row.audience}
+                                    onChange={(e) => updateProductionMatrixCell(index, 'audience', e.target.value)}
+                                    placeholder="Audience / cohort"
+                                  />
+                                </td>
+                                <td className="px-3 py-2 align-top">
+                                  <select
+                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    value={row.concept_id}
+                                    onChange={(e) => updateProductionMatrixCell(index, 'concept_id', e.target.value)}
+                                  >
+                                    <option value="">Select concept</option>
+                                    {concepts.map((c) => (
+                                      <option key={c.id} value={c.id}>
+                                        {c.title || c.id}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="px-3 py-2 align-top">
+                                  <select
+                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    value={row.spec_id}
+                                    onChange={(e) => {
+                                      const nextSpecId = e.target.value;
+                                      updateProductionMatrixCell(index, 'spec_id', nextSpecId);
+                                      const selectedSpec = specs.find((s) => s.id === nextSpecId);
+                                      if (selectedSpec && !row.destinations.trim()) {
+                                        updateProductionMatrixCell(index, 'destinations', selectedSpec.platform);
+                                      }
+                                    }}
+                                  >
+                                    <option value="">Select spec</option>
+                                    {specOptions.map((spec) => (
+                                      <option key={spec.id} value={spec.id}>
+                                        {spec.platform} · {spec.placement} ({spec.width}x{spec.height})
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="px-3 py-2 align-top">
+                                  <input
+                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    value={row.destinations}
+                                    onChange={(e) => updateProductionMatrixCell(index, 'destinations', e.target.value)}
+                                    placeholder="Comma-separated: YouTube, TikTok…"
+                                  />
+                                </td>
+                                <td className="px-3 py-2 align-top text-center">
+                                  <input
+                                    type="checkbox"
+                                    className="h-3 w-3 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                    checked={row.is_feed}
+                                    onChange={(e) => updateProductionMatrixCell(index, 'is_feed', e.target.checked)}
+                                  />
+                                </td>
+                                <td className="px-3 py-2 align-top">
+                                  <input
+                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    value={row.feed_template}
+                                    onChange={(e) => updateProductionMatrixCell(index, 'feed_template', e.target.value)}
+                                    placeholder="Feed/DCO template name"
+                                  />
+                                </td>
+                                <td className="px-3 py-2 align-top">
+                                  <input
+                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    value={row.template_id ?? ''}
+                                    onChange={(e) => updateProductionMatrixCell(index, 'template_id', e.target.value)}
+                                    placeholder="Template ID"
+                                  />
+                                </td>
+                                <td className="px-3 py-2 align-top">
+                                  <input
+                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    value={row.feed_id ?? ''}
+                                    onChange={(e) => updateProductionMatrixCell(index, 'feed_id', e.target.value)}
+                                    placeholder="Feed ID"
+                                  />
+                                </td>
+                                <td className="px-3 py-2 align-top">
+                                  <input
+                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    value={row.feed_asset_id ?? ''}
+                                    onChange={(e) =>
+                                      updateProductionMatrixCell(index, 'feed_asset_id', e.target.value)
+                                    }
+                                    placeholder="Asset ID in feed"
+                                    disabled={!row.is_feed}
+                                  />
+                                </td>
+                                <td className="px-3 py-2 align-top">
+                                  <textarea
+                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 resize-none"
+                                    rows={2}
+                                    value={row.production_details ?? ''}
+                                    onChange={(e) =>
+                                      updateProductionMatrixCell(index, 'production_details', e.target.value)
+                                    }
+                                    placeholder="For non-feed composites: file type, safe zones, animation asks."
+                                    disabled={row.is_feed}
+                                  />
+                                </td>
+                                <td className="px-3 py-2 align-top">
+                                  <textarea
+                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 resize-none"
+                                    rows={2}
+                                    value={row.notes}
+                                    onChange={(e) => updateProductionMatrixCell(index, 'notes', e.target.value)}
+                                    placeholder="Key guardrails / handoff notes"
+                                  />
+                                </td>
+                                <td className="px-3 py-2 align-top text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeProductionMatrixRow(index)}
+                                    className="text-[11px] text-slate-400 hover:text-red-500"
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
                   {/* Production Requirements List – concept-to-spec grouper */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -2438,18 +2755,27 @@ export default function Home() {
                           pre-production checklist before detailed tickets are created.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={generateProductionJobsFromBuilder}
-                        disabled={
-                          builderLoading ||
-                          !builderSelectedConceptId ||
-                          builderSelectedSpecIds.length === 0
-                        }
-                        className="px-4 py-2 text-xs font-semibold rounded-full bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
-                      >
-                        {builderLoading ? 'Generating…' : 'Generate Production List'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={generateProductionJobsFromBuilder}
+                          disabled={
+                            builderLoading ||
+                            (!builderSelectedConceptId && productionMatrixRows.length === 0) ||
+                            (builderSelectedSpecIds.length === 0 && productionMatrixRows.length === 0)
+                          }
+                          className="px-4 py-2 text-xs font-semibold rounded-full bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
+                        >
+                          {builderLoading ? 'Generating…' : 'Generate Production List'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => generateProductionJobsFromBuilder()}
+                          className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
+                        >
+                          Send matrix rows →
+                        </button>
+                      </div>
                     </div>
                     {builderError && (
                       <p className="text-[11px] text-red-500">{builderError}</p>
@@ -2517,6 +2843,7 @@ export default function Home() {
                                 <th className="py-1.5 pr-4 font-semibold">Production Asset</th>
                                 <th className="py-1.5 pr-4 font-semibold">Tech Specs</th>
                                 <th className="py-1.5 pr-4 font-semibold">Destinations</th>
+                                <th className="py-1.5 pr-4 font-semibold">Meta</th>
                                 <th className="py-1.5 pr-4 font-semibold">Requirements</th>
                                 <th className="py-1.5 pr-4 font-semibold">Status</th>
                               </tr>
@@ -2553,6 +2880,9 @@ export default function Home() {
                                           </span>
                                         ))}
                                       </div>
+                                    </td>
+                                    <td className="py-1.5 pr-4 text-slate-500 text-[10px]">
+                                      {job.technical_summary}
                                     </td>
                                     <td className="py-1.5 pr-4 text-slate-700">
                                       <textarea
@@ -2837,18 +3167,18 @@ export default function Home() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSpecs(PRESET_SPECS)}
-                        className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
-                      >
-                        Reset to defaults
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowSpecCreator(true)}
-                        className="px-3 py-1.5 text-[11px] rounded-full border border-teal-500 text-teal-700 bg-teal-50 hover:bg-teal-100"
-                      >
+                        <button
+                          type="button"
+                          onClick={() => setSpecs(PRESET_SPECS)}
+                          className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
+                        >
+                          Reset to defaults
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowSpecCreator(true)}
+                          className="px-3 py-1.5 text-[11px] rounded-full border border-teal-500 text-teal-700 bg-teal-50 hover:bg-teal-100"
+                        >
                         + Add spec
                       </button>
                       <button
@@ -2902,7 +3232,7 @@ export default function Home() {
                               </th>
                             </tr>
                           </thead>
-                          <tbody>
+                            <tbody>
                             {specs.map((spec) => (
                               <tr key={spec.id} className="odd:bg-white even:bg-slate-50/40 align-top hover:bg-slate-50">
                                 <td className="px-3 py-2 border-b border-slate-100 text-center">
@@ -2929,13 +3259,25 @@ export default function Home() {
                                   {spec.media_type}
                                 </td>
                                 <td className="px-3 py-2 border-b border-slate-100 text-slate-500">
-                                  {spec.notes}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="truncate">{spec.notes}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        navigator.clipboard?.writeText?.(spec.id);
+                                      }}
+                                      className="text-[10px] text-slate-400 hover:text-teal-700"
+                                      title="Copy spec ID"
+                                    >
+                                      Copy ID
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
-                          </tbody>
-                        </table>
-                      </div>
+                            </tbody>
+                          </table>
+                        </div>
                     </div>
                   )}
 
