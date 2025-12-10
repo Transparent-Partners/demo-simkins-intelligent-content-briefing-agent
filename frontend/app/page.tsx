@@ -1521,6 +1521,16 @@ export default function Home() {
     });
   }
 
+  const sendSpecsToProduction = () => {
+    // Move to the Requirements tab and, if possible, generate jobs immediately.
+    setProductionTab('requirements');
+    if (builderSelectedConceptId && builderSelectedSpecIds.length > 0) {
+      generateProductionJobsFromBuilder();
+    } else {
+      setBuilderError('Select a concept in Requirements to generate the production list for these specs.');
+    }
+  };
+
   async function generateProductionJobsFromBuilder() {
     if (!builderSelectedConceptId || builderSelectedSpecIds.length === 0) return;
 
@@ -2840,6 +2850,13 @@ export default function Home() {
                         className="px-3 py-1.5 text-[11px] rounded-full border border-teal-500 text-teal-700 bg-teal-50 hover:bg-teal-100"
                       >
                         + Add spec
+                      </button>
+                      <button
+                        type="button"
+                        onClick={sendSpecsToProduction}
+                        className="px-3 py-1.5 text-[11px] rounded-full border border-emerald-500 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                      >
+                        Add to production sheet
                       </button>
                     </div>
                   </div>
