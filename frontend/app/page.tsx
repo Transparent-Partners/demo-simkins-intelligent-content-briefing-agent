@@ -2009,6 +2009,13 @@ export default function Home() {
     }));
   };
 
+  const updateJobStatus = (
+    jobId: string,
+    status: 'Pending' | 'In_Progress' | 'Review' | 'Approved' | string,
+  ) => {
+    setBuilderJobs((prev) => prev.map((job) => (job.job_id === jobId ? { ...job, status } : job)));
+  };
+
   const addJobCopyField = (jobId: string) => {
     const id =
       (typeof crypto !== 'undefined' && 'randomUUID' in crypto && crypto.randomUUID && crypto.randomUUID()) ||
@@ -4360,99 +4367,151 @@ export default function Home() {
                         {productionError && (
                           <p className="text-[11px] text-red-500">{productionError}</p>
                         )}
-                        {!productionBatch || productionAssets.length === 0 ? (
+                        {builderJobs.length === 0 ? (
                           <div className="mt-12 flex flex-col items-center justify-center text-center text-slate-400 gap-3">
                             <p className="text-sm max-w-xs">
-                              Start by generating a production plan from the first Strategy card and Concept.
-                              You can then move assets through Todo → In Progress → In Review → Approved.
+                              Generate the Production List above to view the two-column board linking creative details to live status.
                             </p>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            {['Todo', 'In_Progress', 'Review', 'Approved'].map((col) => {
-                                // Filter assets for this column
-                                const colAssets = productionAssets.filter((a) => a.status === col);
-                                // Filter pending jobs for Todo column (jobs that haven't been turned into assets yet)
-                                const colJobs = col === 'Todo' ? builderJobs.filter(j => j.status === 'Pending') : [];
-                                
-                                return (
-                                  <div
-                                    key={col}
-                                    className="bg-white border border-slate-200 rounded-xl p-3 flex flex-col gap-2"
-                                  >
-                                    <div className="flex items-center justify-between mb-1">
-                                      <span className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-                                        {col === 'In_Progress'
-                                          ? 'In Progress'
-                                          : col === 'Review'
-                                          ? 'In Review'
-                                          : col}
-                                      </span>
-                                      <span className="text-[10px] text-slate-400">
-                                        {colAssets.length + colJobs.length}
+                          <div className="space-y-3">
+                            {builderJobs.map((job) => {
+                              const requirementsValue = jobRequirements[job.job_id] ?? '';
+                              const copyBlocks = jobCopyFields[job.job_id] || [];
+                              const meta = jobFeedMeta[job.job_id] || {};
+                              const status = job.status || 'Pending';
+                              const humanStatus =
+                                status === 'In_Progress' ? 'In Progress' : status === 'Review' ? 'In Review' : status;
+                              const progressColor =
+                                status === 'Approved'
+                                  ? 'bg-emerald-500'
+                                  : status === 'Review'
+                                  ? 'bg-amber-500'
+                                  : status === 'In_Progress'
+                                  ? 'bg-sky-500'
+                                  : 'bg-slate-300';
+                              return (
+                                <div
+                                  key={job.job_id}
+                                  className="grid grid-cols-1 lg:grid-cols-2 gap-3 bg-white border border-slate-200 rounded-xl p-3 shadow-sm"
+                                >
+                                  {/* Left: creative unit details */}
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div>
+                                        <p className="text-[11px] font-semibold text-slate-800">
+                                          {job.creative_concept}
+                                        </p>
+                                        <p className="text-[10px] text-slate-500">
+                                          {job.asset_type} · {job.job_id}
+                                        </p>
+                                      </div>
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                        Specs
                                       </span>
                                     </div>
-                                    <div className="space-y-2">
-                                      {colAssets.map((asset) => (
-                                          <button
-                                            key={asset.id}
-                                            type="button"
-                                            onClick={() => setSelectedAsset(asset)}
-                                            className="w-full text-left bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 hover:border-teal-400 hover:bg-teal-50 transition-colors"
-                                          >
-                                            <div className="flex items-center justify-between gap-2">
-                                              <div className="min-w-0">
-                                                <p className="text-[11px] font-semibold text-slate-800 truncate">
-                                                  {asset.asset_name}
-                                                </p>
-                                                <p className="text-[10px] text-slate-500 truncate">
-                                                  {asset.platform} · {asset.placement}
-                                                </p>
-                                                {/* Show spec dimensions if available */}
-                                                {asset.spec_dimensions && (
-                                                  <p className="text-[9px] text-slate-400">
-                                                    {asset.spec_dimensions}
-                                                  </p>
-                                                )}
-                                              </div>
-                                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 capitalize">
-                                                {asset.asset_type}
-                                              </span>
-                                            </div>
-                                          </button>
-                                        ))}
-                                      {/* Add Pending Jobs to Todo Column */}
-                                      {colJobs.map((job) => (
-                                          <button
-                                            key={job.job_id}
-                                            type="button"
-                                            className="w-full text-left bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 hover:border-teal-400 hover:bg-teal-50 transition-colors opacity-70"
-                                            onClick={() => {
-                                              // Optional: Expand job details on click or promote to active asset
-                                              alert(`Job ID: ${job.job_id}\nUse "Generate Plan" to formalize this into a tracked asset.`);
-                                            }}
-                                          >
-                                            <div className="flex items-center justify-between gap-2">
-                                              <div className="min-w-0">
-                                                <p className="text-[11px] font-semibold text-slate-800 truncate">
-                                                  {job.creative_concept}
-                                                </p>
-                                                <p className="text-[10px] text-slate-500 truncate">
-                                                   {job.destinations.length} destination(s)
-                                                </p>
-                                                <p className="text-[9px] text-slate-400 truncate">
-                                                   {job.technical_summary}
-                                                </p>
-                                              </div>
-                                              <span className="text-[9px] px-1.5 py-0.5 rounded border border-dashed border-slate-300 text-slate-500">
-                                                Planned
-                                              </span>
-                                            </div>
-                                          </button>
+                                    <p className="text-[11px] text-slate-700">{job.technical_summary}</p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {job.destinations.map((dest) => (
+                                        <span
+                                          key={`${job.job_id}-${dest.platform_name}-${dest.format_name}-${dest.spec_id}`}
+                                          className="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-[10px] text-slate-700"
+                                        >
+                                          {dest.platform_name} · {dest.format_name}
+                                          {dest.special_notes && (
+                                            <span className="ml-1 text-amber-700 bg-amber-50 px-1 rounded">
+                                              {dest.special_notes}
+                                            </span>
+                                          )}
+                                        </span>
                                       ))}
                                     </div>
+                                    <div className="space-y-1">
+                                      <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                                        Requirements
+                                      </p>
+                                      <p className="text-[11px] text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-lg px-2 py-2">
+                                        {requirementsValue || 'No requirements added yet.'}
+                                      </p>
+                                    </div>
+                                    {copyBlocks.length > 0 && (
+                                      <div className="space-y-1">
+                                        <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                                          Copy Blocks
+                                        </p>
+                                        <div className="space-y-1.5">
+                                          {copyBlocks.map((copy) => (
+                                            <div
+                                              key={copy.id}
+                                              className="border border-slate-200 rounded-lg bg-slate-50 px-2.5 py-2"
+                                            >
+                                              <div className="flex items-center justify-between text-[11px] text-slate-700">
+                                                <span className="font-semibold truncate">{copy.label || 'Copy field'}</span>
+                                                {copy.font && <span className="text-[10px] text-slate-500">{copy.font}</span>}
+                                              </div>
+                                              {copy.text && (
+                                                <p className="text-[11px] text-slate-700 whitespace-pre-wrap mt-1">
+                                                  {copy.text}
+                                                </p>
+                                              )}
+                                              {copy.instructions && (
+                                                <p className="text-[10px] text-slate-500 whitespace-pre-wrap mt-1">
+                                                  {copy.instructions}
+                                                </p>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {(meta.production_details || meta.feed_template || meta.template_id || meta.feed_id || meta.feed_asset_id) && (
+                                      <div className="space-y-1">
+                                        <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                                          Build Details
+                                        </p>
+                                        <div className="text-[11px] text-slate-700 space-y-0.5">
+                                          {meta.production_details && <p>Build: {meta.production_details}</p>}
+                                          {meta.feed_template && <p>Feed template: {meta.feed_template}</p>}
+                                          {meta.template_id && <p>Template ID: {meta.template_id}</p>}
+                                          {meta.feed_id && <p>Feed ID: {meta.feed_id}</p>}
+                                          {meta.feed_asset_id && <p>Feed asset ID: {meta.feed_asset_id}</p>}
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                );
+
+                                  {/* Right: production status + creative preview */}
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`w-2 h-2 rounded-full ${progressColor}`} />
+                                        <span className="text-[11px] font-semibold text-slate-700">{humanStatus}</span>
+                                      </div>
+                                      <select
+                                        value={status}
+                                        onChange={(e) =>
+                                          updateJobStatus(
+                                            job.job_id,
+                                            e.target.value as 'Pending' | 'In_Progress' | 'Review' | 'Approved',
+                                          )
+                                        }
+                                        className="text-[11px] border border-slate-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                      >
+                                        <option value="Pending">Todo</option>
+                                        <option value="In_Progress">In Progress</option>
+                                        <option value="Review">In Review</option>
+                                        <option value="Approved">Approved</option>
+                                      </select>
+                                    </div>
+                                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                                      Actual creative can be dropped here (e.g., link or embed). Use Production Plan export to align with ops.
+                                    </div>
+                                    <p className="text-[10px] text-slate-500">
+                                      This column mirrors status across jobs. Each row ties 1:1 to the creative details on the left.
+                                    </p>
+                                  </div>
+                                </div>
+                              );
                             })}
                           </div>
                         )}
@@ -5669,7 +5728,7 @@ export default function Home() {
           onClick={() => setConceptDetail(null)}
         >
           <div
-            className="w-[90vw] md:w-[80vw] lg:w-[75vw] max-w-5xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden"
+            className="w-[92vw] sm:w-[85vw] md:w-[78vw] lg:w-[72vw] xl:w-[68vw] max-w-5xl bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-slate-100 bg-slate-50/60">
@@ -5703,7 +5762,7 @@ export default function Home() {
                 </svg>
               </button>
             </div>
-            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+            <div className="p-5 space-y-4 max-h-[68vh] overflow-y-auto">
               <div className="rounded-xl border border-slate-200 bg-slate-50/60 overflow-hidden">
                 {conceptDetail.file_url ? (
                   conceptDetail.file_type?.startsWith('image') ? (
