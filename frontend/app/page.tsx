@@ -230,6 +230,8 @@ type RequirementField = {
   value: string;
 };
 
+const ASSET_TYPES: ('copy' | 'image' | 'h5' | 'video' | 'audio')[] = ['copy', 'image', 'h5', 'video', 'audio'];
+
 type ProductionMatrixLine = {
   id: string;
   segment_source?: string;
@@ -1073,6 +1075,45 @@ export default function Home() {
   }>({});
   const [jobBuildDetails, setJobBuildDetails] = useState<{ [jobId: string]: BuildDetails }>({});
   const [jobRequirementFields, setJobRequirementFields] = useState<{ [jobId: string]: RequirementField[] }>({});
+  const [requirementsLibrary, setRequirementsLibrary] = useState<{
+    [assetType: string]: RequirementField[];
+  }>({
+    copy: [
+      { id: 'copy-headline', label: 'Headline', value: '' },
+      { id: 'copy-body', label: 'Body', value: '' },
+      { id: 'copy-cta', label: 'CTA', value: '' },
+      { id: 'copy-tone', label: 'Tone/Voice', value: '' },
+      { id: 'copy-length', label: 'Word count', value: '' },
+    ],
+    image: [
+      { id: 'img-composition', label: 'Composition', value: '' },
+      { id: 'img-subject', label: 'Subject', value: '' },
+      { id: 'img-background', label: 'Background', value: '' },
+      { id: 'img-text', label: 'Text overlay', value: '' },
+      { id: 'img-brand', label: 'Brand elements', value: '' },
+    ],
+    h5: [
+      { id: 'h5-frame1', label: 'Frame 1 (Hook)', value: '' },
+      { id: 'h5-frame2', label: 'Frame 2 (Value)', value: '' },
+      { id: 'h5-frame3', label: 'Frame 3 (CTA)', value: '' },
+      { id: 'h5-interaction', label: 'Interaction/CTA', value: '' },
+      { id: 'h5-animation', label: 'Animation notes', value: '' },
+    ],
+    video: [
+      { id: 'vid-hook', label: 'Hook (0-3s)', value: '' },
+      { id: 'vid-beats', label: 'Story beats', value: '' },
+      { id: 'vid-duration', label: 'Duration', value: '' },
+      { id: 'vid-captions', label: 'Captions', value: '' },
+      { id: 'vid-cta', label: 'CTA/End card', value: '' },
+    ],
+    audio: [
+      { id: 'aud-script', label: 'Script', value: '' },
+      { id: 'aud-vo', label: 'VO tone', value: '' },
+      { id: 'aud-sfx', label: 'SFX/Music', value: '' },
+      { id: 'aud-cta', label: 'CTA/Tag', value: '' },
+      { id: 'aud-length', label: 'Length', value: '' },
+    ],
+  });
   const [audienceImportOpen, setAudienceImportOpen] = useState(false);
   const [audienceImportColumns, setAudienceImportColumns] = useState<string[]>([]);
   const [audienceImportRows, setAudienceImportRows] = useState<any[]>([]);
@@ -1088,11 +1129,12 @@ export default function Home() {
   const [creatingSpec, setCreatingSpec] = useState(false);
   const [createSpecError, setCreateSpecError] = useState<string | null>(null);
   const [showSpecCreator, setShowSpecCreator] = useState(false);
-  const [productionTab, setProductionTab] = useState<'requirements' | 'specLibrary'>('requirements');
+  const [productionTab, setProductionTab] = useState<'requirements' | 'specLibrary' | 'requirementsLibrary'>('requirements');
   const [pendingDestAudience, setPendingDestAudience] = useState<{ [rowId: string]: string }>({});
   const [showPlan, setShowPlan] = useState(false);
   const [showJobs, setShowJobs] = useState(false);
   const [showBoard, setShowBoard] = useState(true);
+  const [showProductionModule, setShowProductionModule] = useState(true);
   const [productionMatrixRows, setProductionMatrixRows] = useState<ProductionMatrixLine[]>(
     deriveProductionRowsFromMatrix(INITIAL_STRATEGY_MATRIX_RUNNING_SHOES),
   );
@@ -2071,53 +2113,12 @@ export default function Home() {
 
   const getDefaultRequirementFields = (assetType: string): RequirementField[] => {
     const type = (assetType || '').toLowerCase();
-    if (type === 'copy') {
-      return [
-        { id: 'headline', label: 'Headline', value: '' },
-        { id: 'body', label: 'Body', value: '' },
-        { id: 'cta', label: 'CTA', value: '' },
-        { id: 'tone', label: 'Tone/Voice', value: '' },
-        { id: 'word_count', label: 'Word count', value: '' },
-        { id: 'legal', label: 'Legal/Disclaimers', value: '' },
-      ];
-    }
-    if (type === 'h5') {
-      return [
-        { id: 'frame1', label: 'Frame 1 (Hook)', value: '' },
-        { id: 'frame2', label: 'Frame 2 (Value)', value: '' },
-        { id: 'frame3', label: 'Frame 3 (CTA)', value: '' },
-        { id: 'interaction', label: 'Interaction/CTA', value: '' },
-        { id: 'animation', label: 'Animation notes', value: '' },
-        { id: 'safe', label: 'Safe zones', value: '' },
-      ];
-    }
-    if (type === 'video') {
-      return [
-        { id: 'hook', label: 'Hook (0-3s)', value: '' },
-        { id: 'beats', label: 'Story beats', value: '' },
-        { id: 'cta_card', label: 'CTA/End card', value: '' },
-        { id: 'duration', label: 'Duration', value: '' },
-        { id: 'captions', label: 'Captions', value: '' },
-        { id: 'safe', label: 'Aspect/Safe zones', value: '' },
-      ];
-    }
-    if (type === 'audio') {
-      return [
-        { id: 'script', label: 'Script', value: '' },
-        { id: 'vo', label: 'VO tone', value: '' },
-        { id: 'sfx', label: 'SFX/Music', value: '' },
-        { id: 'cta', label: 'CTA/Tag', value: '' },
-        { id: 'length', label: 'Length', value: '' },
-      ];
-    }
-    // default image
+    const fromLibrary = requirementsLibrary[type];
+    if (fromLibrary && fromLibrary.length) return fromLibrary;
     return [
       { id: 'composition', label: 'Composition', value: '' },
       { id: 'subject', label: 'Subject', value: '' },
       { id: 'background', label: 'Background', value: '' },
-      { id: 'text_overlay', label: 'Text overlay', value: '' },
-      { id: 'brand_elements', label: 'Brand elements', value: '' },
-      { id: 'safe', label: 'Safe zones', value: '' },
     ];
   };
 
@@ -2205,6 +2206,34 @@ export default function Home() {
       ...prev,
       [jobId]: (prev[jobId] || []).map((f) => (f.id === fieldId ? { ...f, [key]: value } : f)),
     }));
+  };
+
+  const addLibraryField = (assetType: string) => {
+    const label = window.prompt(`Add a ${assetType} requirement field (label)`);
+    if (!label) return;
+    const id =
+      (typeof crypto !== 'undefined' && 'randomUUID' in crypto && crypto.randomUUID && crypto.randomUUID()) ||
+      `LIB-${Date.now()}`;
+    setRequirementsLibrary((prev) => ({
+      ...prev,
+      [assetType]: [...(prev[assetType] || []), { id, label: label.trim(), value: '' }],
+    }));
+  };
+
+  const applyLibraryToJob = (jobId: string, assetType: string) => {
+    const libFields = requirementsLibrary[assetType] || [];
+    if (!libFields.length) return;
+    setJobRequirementFields((prev) => {
+      const existing = prev[jobId] || [];
+      const existingLabels = new Set(existing.map((f) => f.label.toLowerCase()));
+      const merged = [
+        ...existing,
+        ...libFields
+          .filter((f) => !existingLabels.has(f.label.toLowerCase()))
+          .map((f) => ({ ...f, value: '' })),
+      ];
+      return { ...prev, [jobId]: merged };
+    });
   };
 
 
@@ -3627,11 +3656,11 @@ export default function Home() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => switchWorkspace('brief')}
-                className="px-3 py-1.5 text-xs font-semibold text-teal-700 hover:text-teal-800 bg-teal-50 border border-teal-100 rounded-full transition-colors"
-              >
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => switchWorkspace('brief')}
+                  className="px-3 py-1.5 text-xs font-semibold text-teal-700 hover:text-teal-800 bg-teal-50 border border-teal-100 rounded-full transition-colors"
+                >
                 Back to Brief
               </button>
               {workspaceView === 'production' && (
@@ -3655,6 +3684,22 @@ export default function Home() {
                     }`}
                   >
                     Spec Library
+                  </button>
+                  <button
+                    onClick={() => setProductionTab('requirementsLibrary')}
+                    className={`text-[11px] px-2 py-1 rounded-full ${
+                      productionTab === 'requirementsLibrary'
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Requirements Library
+                  </button>
+                  <button
+                    onClick={() => setShowProductionModule((prev) => !prev)}
+                    className="text-[11px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
+                  >
+                    {showProductionModule ? 'Collapse Production' : 'Expand Production'}
                   </button>
                 </div>
               )}
@@ -3885,7 +3930,29 @@ export default function Home() {
                 </>
               )}
 
-              {workspaceView === 'production' && productionTab === 'requirements' && (
+              {workspaceView === 'production' && !showProductionModule && (
+                <div className="space-y-3">
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Production workspace collapsed
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Expand to access Plan, Jobs Preview, and the Production Board.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowProductionModule(true)}
+                      className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
+                    >
+                      Expand
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {workspaceView === 'production' && showProductionModule && productionTab === 'requirements' && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-4">
                     <div>
@@ -4174,6 +4241,22 @@ export default function Home() {
                           </tbody>
                         </table>
                       </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-2 border-t border-slate-100">
+                        <p className="text-[11px] text-slate-500 max-w-2xl">
+                          When your matrix rows look right, generate the production list to create the jobs below.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowJobs(true);
+                            generateProductionJobsFromBuilder();
+                          }}
+                          disabled={builderLoading || productionMatrixRows.length === 0}
+                          className="px-4 py-2 text-xs font-semibold rounded-full bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
+                        >
+                          {builderLoading ? 'Generating…' : 'Generate Production List'}
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -4197,25 +4280,6 @@ export default function Home() {
                         >
                           {showJobs ? 'Hide jobs' : 'Show jobs'}
                         </button>
-                        <button
-                          type="button"
-                          onClick={generateProductionJobsFromBuilder}
-                          disabled={
-                            builderLoading ||
-                            (!builderSelectedConceptId && productionMatrixRows.length === 0) ||
-                            (builderSelectedSpecIds.length === 0 && productionMatrixRows.length === 0)
-                          }
-                          className="px-4 py-2 text-xs font-semibold rounded-full bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
-                        >
-                          {builderLoading ? 'Generating…' : 'Generate Production List'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => generateProductionJobsFromBuilder()}
-                          className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          Send matrix rows →
-                        </button>
                       </div>
                     </div>
                     {showJobs && (
@@ -4223,50 +4287,12 @@ export default function Home() {
                         {builderError && (
                           <p className="text-[11px] text-red-500">{builderError}</p>
                         )}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-                              Creative Concept
-                            </label>
-                            <select
-                              value={builderSelectedConceptId}
-                              onChange={(e) => {
-                                setBuilderSelectedConceptId(e.target.value);
-                              }}
-                              className="w-full text-sm border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                            >
-                              <option value="">Select a concept…</option>
-                              {concepts.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.title}
-                                </option>
-                              ))}
-                            </select>
-                            <p className="text-[11px] text-slate-500">
-                              Concepts come from the Concept Canvas above. Choose one to act as the
-                              master idea for this asset group.
-                            </p>
+                        {builderJobs.length === 0 && (
+                          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-500">
+                            No jobs generated yet. Scroll up to the bottom of the Production Requirements Matrix and click
+                            <span className="font-semibold text-slate-700"> Generate Production List</span>.
                           </div>
-                          <div className="space-y-2">
-                            <label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-                              Selected Specs
-                            </label>
-                            <div className="p-3 border border-slate-200 rounded-lg bg-slate-50 flex items-center justify-between">
-                                <span className="text-sm text-slate-600">
-                                    {builderSelectedSpecIds.length} specs selected
-                                </span>
-                                <button
-                                    onClick={() => setProductionTab('specLibrary')}
-                                    className="text-xs text-teal-600 font-medium hover:text-teal-700 hover:underline"
-                                >
-                                    Manage in Library →
-                                </button>
-                            </div>
-                            <p className="text-[11px] text-slate-500">
-                              Select the target formats for this production run in the Spec Library.
-                            </p>
-                          </div>
-                        </div>
+                        )}
 
                         {builderJobs.length > 0 && (
                           <div className="pt-3 border-t border-slate-200 space-y-2">
@@ -4693,11 +4719,11 @@ export default function Home() {
                                       <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
                                         Requirements
                                       </p>
-                                      {requirementFields.length ? (
-                                        <div className="flex flex-wrap gap-2">
-                                          {requirementFields.map((field) => (
-                                            <div
-                                              key={field.id}
+                                    {requirementFields.length ? (
+                                      <div className="flex flex-wrap gap-2">
+                                        {requirementFields.map((field) => (
+                                          <div
+                                            key={field.id}
                                               className="min-w-[200px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"
                                             >
                                               <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
@@ -4712,6 +4738,13 @@ export default function Home() {
                                       ) : (
                                         <p className="text-[11px] text-slate-500">No requirements added yet.</p>
                                       )}
+                                      <button
+                                        type="button"
+                                        onClick={() => applyLibraryToJob(job.job_id, job.asset_type)}
+                                        className="mt-1 text-[11px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
+                                      >
+                                        Add from Requirements Library
+                                      </button>
                                       {requirementsValue && (
                                         <p className="text-[11px] text-slate-600 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-lg px-2 py-2">
                                           {requirementsValue}
@@ -4950,7 +4983,7 @@ export default function Home() {
                 </div>
               )}
 
-              {workspaceView === 'production' && productionTab === 'specLibrary' && (
+              {workspaceView === 'production' && showProductionModule && productionTab === 'specLibrary' && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
@@ -5212,6 +5245,61 @@ export default function Home() {
                         </div>
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {workspaceView === 'production' && showProductionModule && productionTab === 'requirementsLibrary' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Requirements Library
+                      </h3>
+                      <p className="text-[11px] text-slate-500 max-w-xl">
+                        Pre-populate requirement fields by asset type. These can be pulled into jobs with one click.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {ASSET_TYPES.map((type) => {
+                      const label =
+                        type === 'h5'
+                          ? 'HTML5'
+                          : type.charAt(0).toUpperCase() + type.slice(1);
+                      const fields = requirementsLibrary[type] || [];
+                      return (
+                        <div key={type} className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-[11px] font-semibold text-slate-700">{label}</p>
+                              <p className="text-[10px] text-slate-500">Default fields for {label} builds</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => addLibraryField(type)}
+                              className="text-[11px] px-2 py-1 rounded-full border border-teal-400 text-teal-700 bg-white hover:bg-teal-50"
+                            >
+                              + Add field
+                            </button>
+                          </div>
+                          {fields.length === 0 ? (
+                            <p className="text-[11px] text-slate-400">No fields yet.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {fields.map((f) => (
+                                <div key={f.id} className="text-[11px] text-slate-700 border border-slate-200 rounded-lg px-2 py-1 bg-slate-50">
+                                  {f.label}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <p className="text-[10px] text-slate-400">
+                            Use “Add from Requirements Library” in Jobs Preview to insert these.
+                          </p>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
