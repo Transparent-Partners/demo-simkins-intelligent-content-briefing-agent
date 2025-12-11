@@ -1156,6 +1156,7 @@ export default function Home() {
     'tracking_code',
   ]);
   const [dragSourceField, setDragSourceField] = useState<string | null>(null);
+  const [showFeedMapping, setShowFeedMapping] = useState(true);
   const [feedRows, setFeedRows] = useState<FeedRow[]>([]);
   const [expandedMatrixRows, setExpandedMatrixRows] = useState<Record<number, boolean>>({});
   const feedEligible = useMemo(
@@ -1434,6 +1435,7 @@ export default function Home() {
     };
     setFeedFields((prev) => [...prev, newField]);
     setVisibleFeedFields((prev) => [...prev, newKey]);
+    setFeedFieldLibrary((prev) => [...prev, newField]);
     // Existing rows will just have this field as undefined until edited
   };
 
@@ -6066,141 +6068,177 @@ export default function Home() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 bg-white border border-slate-200 rounded-xl p-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-                            Source fields
-                          </p>
-                          <p className="text-[10px] text-slate-500">Feed fields you’ve defined.</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={applyFeedLibrary}
-                          className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
-                        >
-                          Load library
-                        </button>
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                          Field Mapping
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          Connect feed source fields to destination platform fields.
+                        </p>
                       </div>
-                      <div className="space-y-1 max-h-56 overflow-auto">
-                        {feedFieldLibrary.map((field) => (
-                          <div
-                            key={field.key as string}
-                            draggable
-                            onDragStart={() => setDragSourceField(field.key as string)}
-                            onClick={() => setDragSourceField(field.key as string)}
-                            className={`text-[11px] px-2 py-1 rounded border ${
-                              dragSourceField === field.key
-                                ? 'border-teal-500 bg-teal-50 text-teal-700'
-                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-teal-400'
-                            }`}
-                          >
-                            {field.label}
-                          </div>
-                        ))}
-                        {feedFieldLibrary.length === 0 && (
-                          <p className="text-[11px] text-slate-400">No source fields.</p>
-                        )}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowFeedMapping((prev) => !prev)}
+                        className="text-[11px] px-3 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
+                      >
+                        {showFeedMapping ? 'Hide mapping' : 'Show mapping'}
+                      </button>
                     </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-                            Destination fields
-                          </p>
-                          <p className="text-[10px] text-slate-500">Platform fields to map into.</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={addDestinationField}
-                          className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
-                        >
-                          + Add destination
-                        </button>
-                      </div>
-                      <div className="space-y-1 max-h-56 overflow-auto">
-                        {destinationFieldLibrary.map((dest) => {
-                          const mapped = feedFieldMappings.find(
-                            (m) => m.destination === dest && m.platform === feedMappingPlatform,
-                          );
-                          return (
-                            <div
-                              key={dest}
-                              onDragOver={(e) => e.preventDefault()}
-                              onDrop={() => handleDropMapping(dest)}
-                              className="text-[11px] px-2 py-1 rounded border border-slate-200 bg-slate-50 hover:border-teal-400 flex items-center justify-between"
-                            >
-                              <span>{dest}</span>
-                              <button
-                                type="button"
-                                className="text-[10px] text-teal-600"
-                                onClick={() => handleDropMapping(dest)}
-                                disabled={!dragSourceField}
-                              >
-                                Map
-                              </button>
-                              {mapped && (
-                                <span className="text-[10px] text-slate-500 ml-2">
-                                  ← {mapped.source}
-                                </span>
-                              )}
+                    {showFeedMapping && (
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                                Source fields
+                              </p>
+                              <p className="text-[10px] text-slate-500">Feed fields you’ve defined.</p>
                             </div>
-                          );
-                        })}
-                        {destinationFieldLibrary.length === 0 && (
-                          <p className="text-[11px] text-slate-400">No destination fields.</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-                            Associations ({feedMappingPlatform})
-                          </p>
-                          <p className="text-[10px] text-slate-500">Source → Destination</p>
-                        </div>
-                        <select
-                          className="text-[11px] border border-slate-200 rounded px-2 py-1 bg-white"
-                          value={feedMappingPlatform}
-                          onChange={(e) =>
-                            setFeedMappingPlatform(e.target.value)
-                          }
-                        >
-                          <option value="Meta">Meta</option>
-                          <option value="Google">Google</option>
-                          <option value="TikTok">TikTok</option>
-                          <option value="DV360">DV360</option>
-                          <option value="LinkedIn">LinkedIn</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1 max-h-56 overflow-auto">
-                        {feedFieldMappings.filter((m) => m.platform === feedMappingPlatform).map((m) => (
-                          <div
-                            key={m.id}
-                            className="flex items-center justify-between text-[11px] px-2 py-1 rounded border border-slate-200 bg-slate-50"
-                          >
-                            <span className="text-slate-700">
-                              {m.source} → {m.destination}
-                            </span>
                             <button
                               type="button"
-                              onClick={() => deleteFeedMappingRow(m.id)}
-                              className="text-[10px] text-slate-400 hover:text-red-500"
+                              onClick={applyFeedLibrary}
+                              className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
                             >
-                              Remove
+                              Load library
                             </button>
                           </div>
-                        ))}
-                        {feedFieldMappings.filter((m) => m.platform === feedMappingPlatform).length === 0 && (
-                          <p className="text-[11px] text-slate-400">No mappings yet. Drag or click Map to connect.</p>
-                        )}
+                          <div className="space-y-1 max-h-56 overflow-auto">
+                            {feedFieldLibrary.map((field) => (
+                              <div
+                                key={field.key as string}
+                                draggable
+                                onDragStart={() => setDragSourceField(field.key as string)}
+                                onClick={() => setDragSourceField(field.key as string)}
+                                className={`text-[11px] px-2 py-1 rounded border ${
+                                  dragSourceField === field.key
+                                    ? 'border-teal-500 bg-teal-50 text-teal-700'
+                                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-teal-400'
+                                }`}
+                              >
+                                {field.label}
+                              </div>
+                            ))}
+                            {feedFieldLibrary.length === 0 && (
+                              <p className="text-[11px] text-slate-400">No source fields.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                                Destination fields
+                              </p>
+                              <p className="text-[10px] text-slate-500">Platform fields to map into.</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={addDestinationField}
+                              className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
+                            >
+                              + Add destination
+                            </button>
+                          </div>
+                          <div className="space-y-1 max-h-56 overflow-auto">
+                            {destinationFieldLibrary.map((dest) => {
+                              const mapped = feedFieldMappings.find(
+                                (m) => m.destination === dest && m.platform === feedMappingPlatform,
+                              );
+                              return (
+                                <div
+                                  key={dest}
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onDrop={() => handleDropMapping(dest)}
+                                  className="text-[11px] px-2 py-1 rounded border border-slate-200 bg-slate-50 hover:border-teal-400 flex items-center justify-between"
+                                >
+                                  <span>{dest}</span>
+                                  <button
+                                    type="button"
+                                    className="text-[10px] text-teal-600"
+                                    onClick={() => handleDropMapping(dest)}
+                                    disabled={!dragSourceField}
+                                  >
+                                    Map
+                                  </button>
+                                  {mapped && (
+                                    <span className="text-[10px] text-slate-500 ml-2">
+                                      ← {mapped.source}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {destinationFieldLibrary.length === 0 && (
+                              <p className="text-[11px] text-slate-400">No destination fields.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                                Field Associations
+                              </p>
+                              <p className="text-[10px] text-slate-500">Source → Destination</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <select
+                                className="text-[11px] border border-slate-200 rounded px-2 py-1 bg-white"
+                                value={feedMappingPlatform}
+                                onChange={(e) =>
+                                  setFeedMappingPlatform(e.target.value)
+                                }
+                              >
+                                <option value="Meta">Meta</option>
+                                <option value="Google">Google</option>
+                                <option value="TikTok">TikTok</option>
+                                <option value="DV360">DV360</option>
+                                <option value="LinkedIn">LinkedIn</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const raw = window.prompt('Add destination platform name:');
+                                  if (!raw) return;
+                                  const trimmed = raw.trim();
+                                  if (!trimmed) return;
+                                  setFeedMappingPlatform(trimmed);
+                                }}
+                                className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
+                              >
+                                + Add platform
+                              </button>
+                            </div>
+                          </div>
+                          <div className="space-y-1 max-h-56 overflow-auto">
+                            {feedFieldMappings.filter((m) => m.platform === feedMappingPlatform).map((m) => (
+                              <div
+                                key={m.id}
+                                className="flex items-center justify-between text-[11px] px-2 py-1 rounded border border-slate-200 bg-slate-50"
+                              >
+                                <span className="text-slate-700">
+                                  {m.source} → {m.destination}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteFeedMappingRow(m.id)}
+                                  className="text-[10px] text-slate-400 hover:text-red-500"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                            {feedFieldMappings.filter((m) => m.platform === feedMappingPlatform).length === 0 && (
+                              <p className="text-[11px] text-slate-400">No mappings yet. Drag or click Map to connect.</p>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
                   <section className="border border-slate-200 rounded-xl bg-white overflow-hidden">
