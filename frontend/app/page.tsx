@@ -781,6 +781,8 @@ const PRESET_SPECS: Spec[] = [
   { id: 'CTV_FULLSCREEN_16x9', platform: 'CTV', placement: 'Full Screen', width: 1920, height: 1080, orientation: 'Horizontal', media_type: 'video', notes: 'TV-safe framing; allow overscan margins.' },
   { id: 'CTV_QUARTERSCREEN_16x9', platform: 'CTV', placement: 'Quarter Screen Overlay', width: 960, height: 540, orientation: 'Horizontal', media_type: 'video_or_image', notes: 'Overlay; avoid lower-third UI.' },
   { id: 'CTV_SLATE_16x9', platform: 'CTV', placement: 'End Slate', width: 1920, height: 1080, orientation: 'Horizontal', media_type: 'video_or_image', notes: '3-5s slate; large CTA and URL.' },
+  // Amazon (demo)
+  { id: 'AMAZON_DISPLAY_1x1', platform: 'Amazon', placement: 'Sponsored Display', width: 1080, height: 1080, orientation: 'Square', media_type: 'image_or_video', notes: 'Prime-first messaging; keep product + price clear.' },
   // Mobile (IAB New Ad Portfolio common units)
   { id: 'MOB_INLINE_RECT_300x250', platform: 'Mobile', placement: 'Inline Rectangle', width: 300, height: 250, orientation: 'Rectangle', media_type: 'image_or_html5', notes: 'Inline mobile rectangle; common in content feeds.' },
   { id: 'MOB_BANNER_320x50', platform: 'Mobile', placement: 'Standard Banner', width: 320, height: 50, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Standard mobile banner; ultra-limited height.' },
@@ -800,6 +802,7 @@ const DESTINATION_OPTIONS_BY_PLATFORM: Record<string, string[]> = {
   'Open Web': ['Open Web Display', 'GDN'],
   CTV: ['CTV Fullscreen', 'CTV Overlay'],
   Mobile: ['In-App Banner', 'In-App Interstitial'],
+  Amazon: ['Amazon Sponsored Display', 'Amazon Video'],
 };
 
 const PLATFORM_NATIVE_KEYWORDS: Record<string, string[]> = {
@@ -811,6 +814,7 @@ const PLATFORM_NATIVE_KEYWORDS: Record<string, string[]> = {
   'Open Web': ['open web', 'gdn', 'dv360', 'display'],
   CTV: ['ctv', 'dv360', 'ott'],
   Mobile: ['mobile', 'in-app'],
+  Amazon: ['amazon', 'prime'],
 };
 
 const isAudienceNativeToPlatform = (segmentSource: string | undefined, platform: string | undefined) => {
@@ -1681,9 +1685,7 @@ export default function Home() {
   }
 
   async function generateProductionPlan() {
-    // POC mode: if upstream modules aren't wired yet, fall back to a
-    // deterministic demo Production Matrix so the board is never empty.
-    if (!matrixRows.length || !concepts.length) {
+    const buildDemoProductionPlan = () => {
       const demoConcept = concepts[0];
       const demoBatch: ProductionBatch = {
         id: 'DEMO-BATCH-001',
@@ -1694,7 +1696,6 @@ export default function Home() {
           demoConcept?.title || 'Night Reset Ritual'
         }`,
       };
-
       const demoAssets: ProductionAsset[] = [
         {
           id: 'DEMO-ASSET-001',
@@ -1777,10 +1778,14 @@ export default function Home() {
           file_url: null,
         },
       ];
-
       setProductionBatch(demoBatch);
       setProductionAssets(demoAssets);
       setWorkspaceView('production');
+    };
+
+    // In demo mode or if upstream modules aren't wired yet, use deterministic demo data.
+    if (demoMode || !matrixRows.length || !concepts.length) {
+      buildDemoProductionPlan();
       return;
     }
 
@@ -1844,51 +1849,12 @@ export default function Home() {
       console.error('Error generating production plan', e);
       // POC fallback: if backend is not wired yet in this environment,
       // fall back to the same demo plan used when upstream modules are empty.
-      setProductionError(
-        e?.message ?? 'Unable to generate production plan from backend; showing demo plan.',
-      );
-      const demoConcept = concepts[0];
-      const demoBatch: ProductionBatch = {
-        id: 'DEMO-BATCH-001',
-        campaign_id: briefState.campaign_name || 'DEMO_CAMPAIGN',
-        strategy_segment_id: 'SEG-DEMO',
-        concept_id: demoConcept?.id || 'CON-DEMO',
-        batch_name: `${briefState.campaign_name || 'Demo Campaign'} – ${
-          demoConcept?.title || 'Night Reset Ritual'
-        }`,
-      };
-      const demoAssets: ProductionAsset[] = [
-        {
-          id: 'DEMO-ASSET-001',
-          batch_id: demoBatch.id,
-          asset_name: 'Loyalists_META_StoriesReels',
-          platform: 'Meta',
-          placement: 'Stories / Reels',
-          spec_dimensions: '1080x1920',
-          spec_details: {
-            id: 'META_STORY',
-            platform: 'Meta',
-            placement: 'Stories / Reels',
-            format_name: '9:16 Vertical',
-            dimensions: '1080x1920',
-          },
-          status: 'Todo',
-          assignee: null,
-          asset_type: 'video',
-          visual_directive:
-            demoConcept?.description ||
-            'Top-funnel vertical story dramatizing the before/after of the core concept.',
-          copy_headline:
-            'Show the modular story in 6–15 seconds with a clear hero benefit in frame 1.',
-          source_asset_requirements:
-            'Master 9:16 video edit from hero shoot; export with safe zones respected.',
-          adaptation_instruction: 'Localize supers and end card by market; keep structure identical.',
-          file_url: null,
-        },
-      ];
-      setProductionBatch(demoBatch);
-      setProductionAssets(demoAssets);
-      setWorkspaceView('production');
+      if (!demoMode) {
+        setProductionError(
+          e?.message ?? 'Unable to generate production plan from backend; showing demo plan.',
+        );
+      }
+      buildDemoProductionPlan();
     } finally {
       setProductionLoading(false);
     }
@@ -2602,6 +2568,128 @@ export default function Home() {
       return changed ? next : prev;
     });
   }, [matrixRows]);
+
+  // Demo-only: seed production matrix rows with concepts, specs, and destinations for richer simulations
+  useEffect(() => {
+    if (!demoMode || !concepts.length || !specs.length) return;
+    const specMap = Object.fromEntries(specs.map((s) => [s.id, s]));
+    const patchRow = (
+      row: ProductionMatrixLine,
+      data: Partial<ProductionMatrixLine>,
+      destinations?: DestinationEntry[],
+    ) => ({
+      ...row,
+      ...data,
+      destinations: destinations ?? row.destinations,
+    });
+
+    setProductionMatrixRows((prev) =>
+      prev.map((row) => {
+        switch (row.id) {
+          case 'PR-004':
+            return patchRow(
+              row,
+              {
+                concept_id: 'CON-003',
+                spec_id: specMap['AMAZON_DISPLAY_1x1'] ? 'AMAZON_DISPLAY_1x1' : row.spec_id,
+                notes: 'Lead with “Prime fast” + comfort; show price/value.',
+                production_details: 'File type, safe zones, animation asks.',
+              },
+              [
+                { name: 'Amazon Sponsored Display' },
+                { name: 'Open Web Display' },
+              ],
+            );
+          case 'PR-005':
+            return patchRow(
+              row,
+              {
+                concept_id: 'CON-004',
+                spec_id: specMap['META_REELS_9x16'] ? 'META_REELS_9x16' : row.spec_id,
+                notes: 'Use dynamic product feed; highlight free returns.',
+                production_details: 'File type, safe zones, animation asks.',
+              },
+              [{ name: 'Meta Reels/Stories' }],
+            );
+          case 'PR-006':
+            return patchRow(
+              row,
+              {
+                concept_id: 'CON-006',
+                spec_id: specMap['YOUTUBE_SHORTS_9x16'] ? 'YOUTUBE_SHORTS_9x16' : row.spec_id,
+                notes: 'Lean on pro/coach voiceover; show split times.',
+                production_details: 'File type, safe zones, animation asks.',
+              },
+              [
+                { name: 'DV360' },
+                { name: 'YouTube Shorts' },
+                { name: 'CTV Fullscreen' },
+              ],
+            );
+          case 'PR-007':
+            return patchRow(
+              row,
+              {
+                concept_id: 'CON-002',
+                spec_id: specMap['META_REELS_9x16'] ? 'META_REELS_9x16' : row.spec_id,
+                notes: 'Price + performance bundles; show loyalty perks.',
+                production_details: 'File type, safe zones, animation asks.',
+              },
+              [
+                { name: 'Meta Reels/Stories' },
+                { name: 'TikTok In-Feed' },
+                { name: 'YouTube Shorts' },
+              ],
+            );
+          case 'PR-008':
+            return patchRow(
+              row,
+              {
+                concept_id: 'CON-005',
+                spec_id: specMap['CTV_FULLSCREEN_16x9'] ? 'CTV_FULLSCREEN_16x9' : row.spec_id,
+                notes: 'Bundle offers; family/household creative frames.',
+                production_details: 'File type, safe zones, animation asks.',
+              },
+              [
+                { name: 'CTV Fullscreen' },
+                { name: 'Open Web Display' },
+                { name: 'Meta Reels/Stories' },
+              ],
+            );
+          case 'PR-009':
+            return patchRow(
+              row,
+              {
+                concept_id: 'CON-007',
+                spec_id: specMap['LINKEDIN_IMAGE_1x1'] ? 'LINKEDIN_IMAGE_1x1' : row.spec_id,
+                notes: 'Emphasize perk value and participation; softer CTA.',
+                production_details: 'File type, safe zones, animation asks.',
+              },
+              [
+                { name: 'LinkedIn Feed' },
+                { name: 'Open Web Display' },
+              ],
+            );
+          case 'PR-010':
+            return patchRow(
+              row,
+              {
+                concept_id: 'CON-001',
+                spec_id: specMap['TIKTOK_IN_FEED_9x16'] ? 'TIKTOK_IN_FEED_9x16' : row.spec_id,
+                notes: 'Use creator-led hooks; unboxings and on-foot tests.',
+                production_details: 'File type, safe zones, animation asks.',
+              },
+              [
+                { name: 'TikTok In-Feed' },
+                { name: 'Meta Reels/Stories' },
+              ],
+            );
+          default:
+            return row;
+        }
+      }),
+    );
+  }, [demoMode, concepts, specs]);
 
   function createSpec() {
     setCreateSpecError(null);
