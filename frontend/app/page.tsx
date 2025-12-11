@@ -1158,6 +1158,7 @@ export default function Home() {
   const [brandAssets, setBrandAssets] = useState<string[]>([]);
   const [brandVoiceGuide, setBrandVoiceGuide] = useState('');
   const [brandStyleGuide, setBrandStyleGuide] = useState('');
+  const [conceptDetail, setConceptDetail] = useState<Concept | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1176,6 +1177,11 @@ export default function Home() {
       setWorkspaceView('production');
     }
   }, [workspaceView, feedEligible]);
+  useEffect(() => {
+    if (workspaceView !== 'concepts' || rightTab !== 'board') {
+      setConceptDetail(null);
+    }
+  }, [workspaceView, rightTab]);
 
   const toggleMatrixRowExpanded = (index: number) => {
     setExpandedMatrixRows((prev) => ({ ...prev, [index]: !prev[index] }));
@@ -3727,8 +3733,8 @@ export default function Home() {
                               <th className="px-3 py-2 text-left">Segment Source</th>
                               <th className="px-3 py-2 text-left">Audience</th>
                               <th className="px-3 py-2 text-left">Concept</th>
-                              <th className="px-3 py-2 text-left">Spec</th>
-                              <th className="px-3 py-2 text-left">Destinations (by spec)</th>
+                              <th className="px-3 py-2 text-left">Destination</th>
+                              <th className="px-3 py-2 text-left">Destinations (add more)</th>
                               <th className="px-3 py-2 text-left">Feed?</th>
                               <th className="px-3 py-2 text-left">Production Details (non-feed)</th>
                               <th className="px-3 py-2 text-left">Notes</th>
@@ -3790,12 +3796,13 @@ export default function Home() {
                                         if (selectedSpec) {
                                           const destEntry: DestinationEntry = {
                                             name: `${selectedSpec.platform} · ${selectedSpec.placement}`,
+                                            spec_id: selectedSpec.id,
                                           };
                                           updateProductionMatrixCell(index, 'destinations', [destEntry]);
                                         }
                                       }}
                                     >
-                                      <option value="">Select spec</option>
+                                      <option value="">Select destination</option>
                                       {specOptions.map((spec) => (
                                         <option key={spec.id} value={spec.id}>
                                           {spec.platform} · {spec.placement} ({spec.width}x{spec.height})
@@ -3859,7 +3866,7 @@ export default function Home() {
                                           if (e.key === 'Enter') {
                                             e.preventDefault();
                                             const val = (e.target as HTMLInputElement).value.trim();
-                                            addDestinationToRow(index, val);
+                                            addDestinationToRow(index, val, row.spec_id);
                                             (e.target as HTMLInputElement).value = '';
                                           }
                                         }}
@@ -5188,7 +5195,7 @@ export default function Home() {
                         Concept Board
                       </h3>
                       <p className="text-[11px] text-slate-500">
-                        A curated board of final concepts you’ve marked from the Concepts canvas.
+                        A curated board of final concepts you’ve marked from the Concepts canvas. Click a tile to quick-view details.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -5262,7 +5269,8 @@ export default function Home() {
                               .map((c) => (
                                 <div
                                   key={c.id}
-                                  className="relative bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-2"
+                                  onClick={() => setConceptDetail(c)}
+                                  className="relative bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-2 cursor-pointer hover:shadow-md transition-shadow"
                                 >
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="min-w-0">
@@ -5280,9 +5288,10 @@ export default function Home() {
                                     </div>
                                     <button
                                       type="button"
-                                      onClick={() =>
-                                        setMoodBoardConceptIds((prev) => prev.filter((id) => id !== c.id))
-                                      }
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setMoodBoardConceptIds((prev) => prev.filter((id) => id !== c.id));
+                                      }}
                                       className="text-[10px] text-slate-400 hover:text-red-500"
                                     >
                                       Remove
@@ -5313,6 +5322,7 @@ export default function Home() {
                                         href={c.file_url}
                                         target="_blank"
                                         rel="noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
                                         className="text-teal-700 hover:underline"
                                       >
                                         {c.file_name || 'Open PDF'}
@@ -5529,6 +5539,113 @@ export default function Home() {
           </div>
         </div>
       </>
+      )}
+
+      {/* Concept detail shadowbox */}
+      {conceptDetail && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 px-4"
+          onClick={() => setConceptDetail(null)}
+        >
+          <div
+            className="w-full max-w-3xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-slate-100 bg-slate-50/60">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-slate-900">
+                  {conceptDetail.title || 'Untitled concept'}
+                </p>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                  <span className="font-mono text-slate-600">{conceptDetail.asset_id || 'No asset ID'}</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-mono text-slate-400">{conceptDetail.id}</span>
+                  {conceptDetail.kind && (
+                    <span className="ml-1 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-700 capitalize">
+                      {conceptDetail.kind}
+                    </span>
+                  )}
+                  {conceptDetail.status && (
+                    <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] text-emerald-700 capitalize">
+                      {conceptDetail.status}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConceptDetail(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 overflow-hidden">
+                {conceptDetail.file_url ? (
+                  conceptDetail.file_type?.startsWith('image') ? (
+                    <img
+                      src={conceptDetail.file_url}
+                      alt={conceptDetail.title || conceptDetail.file_name || 'Concept asset'}
+                      className="w-full max-h-80 object-cover"
+                    />
+                  ) : conceptDetail.file_type?.startsWith('video') ? (
+                    <video
+                      src={conceptDetail.file_url}
+                      controls
+                      className="w-full max-h-80 object-cover bg-black"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-between gap-3 px-4 py-3 text-[12px] text-slate-700">
+                      <div className="flex flex-col">
+                        <span className="font-semibold">Attachment</span>
+                        <span className="text-slate-500">{conceptDetail.file_name || 'Download file'}</span>
+                      </div>
+                      <a
+                        href={conceptDetail.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-teal-700 text-[11px] font-semibold hover:underline"
+                      >
+                        Open
+                      </a>
+                    </div>
+                  )
+                ) : (
+                  <div className="px-4 py-6 bg-gradient-to-br from-slate-50 to-slate-100 text-center text-[12px] text-slate-500">
+                    No media uploaded for this concept yet. Add a reference from the concept board or DAM.
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">Concept</p>
+                  <p className="text-[12px] text-slate-700 whitespace-pre-wrap">
+                    {conceptDetail.description || 'No description provided.'}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">Notes</p>
+                  <p className="text-[12px] text-slate-700 whitespace-pre-wrap">
+                    {conceptDetail.notes || 'No production notes yet.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">AI Prompt</p>
+                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2">
+                  <p className="text-[12px] text-slate-700 whitespace-pre-wrap">
+                    {conceptDetail.generatedPrompt || 'Prompt not generated yet. Use the Concept Canvas to build one.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Close main workspace row container */}
