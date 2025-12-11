@@ -3185,6 +3185,26 @@ export default function Home() {
                   );
                 })}
               </div>
+              <div className="pt-4 mt-4 border-t border-slate-200 flex flex-wrap justify-end gap-2">
+                <button
+                  onClick={() => downloadExport('txt')}
+                  className="px-3 py-1.5 text-[11px] font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+                >
+                  Download TXT
+                </button>
+                <button
+                  onClick={() => downloadExport('pdf')}
+                  className="px-3 py-1.5 text-[11px] font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+                >
+                  Download PDF
+                </button>
+                <button
+                  onClick={() => downloadExport('json')}
+                  className="px-3 py-1.5 text-[11px] font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+                >
+                  Download JSON
+                </button>
+              </div>
             </div>
           </div>
         </div>
