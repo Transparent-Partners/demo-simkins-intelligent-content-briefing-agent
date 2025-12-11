@@ -611,6 +611,9 @@ type Concept = {
   kind?: 'image' | 'video' | 'copy';
   status?: 'idle' | 'generating' | 'ready' | 'error';
   generatedPrompt?: string;
+  file_url?: string;
+  file_name?: string;
+  file_type?: string;
 };
 
 // --- Sample Data ---
@@ -1159,6 +1162,7 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const conceptFileInputRef = useRef<HTMLInputElement | null>(null);
+  const conceptMediaInputRef = useRef<HTMLInputElement | null>(null);
   const brandAssetFileInputRef = useRef<HTMLInputElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -2352,11 +2356,9 @@ export default function Home() {
         },
         {
           role: 'assistant',
-          content: 'Exporting the brief as TXT for demo. You can also tap PDF or JSON in the header to see other formats.',
+          content: 'You can export the brief as TXT, PDF, or JSON using the buttons in the brief panel.',
         },
       ]);
-      // Demonstrate export in demo mode without calling backend
-      downloadExport('txt');
       setLoading(false);
     }, 850);
   }
@@ -2417,6 +2419,46 @@ export default function Home() {
 
   function openConceptFilePicker() {
     conceptFileInputRef.current?.click();
+  }
+
+  function openConceptMediaPicker() {
+    conceptMediaInputRef.current?.click();
+  }
+
+  function handleConceptMediaChange(e: any) {
+    const files: File[] = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const newConcepts: Concept[] = files.map((file, idx) => {
+      const url = URL.createObjectURL(file);
+      const type = file.type.startsWith('video')
+        ? 'video'
+        : file.type === 'application/pdf'
+        ? 'copy'
+        : 'image';
+      return {
+        id: `CON-MEDIA-${Date.now()}-${idx + 1}`,
+        asset_id: '',
+        title: file.name,
+        description: `Uploaded from local file (${file.type || 'unknown type'}).`,
+        notes: 'Use this uploaded asset as a reference in prompts and production mapping.',
+        kind: type as any,
+        status: 'idle',
+        file_url: url,
+        file_name: file.name,
+        file_type: file.type,
+      };
+    });
+    setConcepts((prev) => [...prev, ...newConcepts]);
+    setMoodBoardConceptIds((prev) => [...prev, ...newConcepts.map((c) => c.id)]);
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', content: `Uploaded ${files.length} media file(s) to the concept board.` },
+      {
+        role: 'assistant',
+        content: 'Media added to concept board. They will guide prompts and be available for production mapping.',
+      },
+    ]);
+    e.target.value = '';
   }
 
   function handleConceptFileChange(e: any) {
@@ -5157,12 +5199,27 @@ export default function Home() {
                         accept=".json"
                         onChange={handleConceptFileChange}
                       />
+                      <input
+                        type="file"
+                        ref={conceptMediaInputRef}
+                        className="hidden"
+                        accept="image/*,application/pdf,video/*"
+                        multiple
+                        onChange={handleConceptMediaChange}
+                      />
                       <button
                         type="button"
                         onClick={openConceptFilePicker}
                         className="text-[11px] px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
                       >
                         Upload concepts
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openConceptMediaPicker}
+                        className="text-[11px] px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
+                      >
+                        Upload media
                       </button>
                       <button
                         type="button"
@@ -5200,45 +5257,76 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {concepts
-                        .filter((c) => moodBoardConceptIds.includes(c.id))
-                        .map((c) => (
-                          <div
-                            key={c.id}
-                            className="relative bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-2"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="text-xs font-semibold text-slate-900 truncate">
-                                  {c.title || 'Untitled concept'}
-                                </p>
-                                <p className="text-[11px] text-slate-500">
-                                  <span className="font-mono">{c.asset_id}</span>
-                                  {c.kind && (
-                                    <span className="ml-1 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 capitalize">
-                                      {c.kind}
-                                    </span>
+                            {concepts
+                              .filter((c) => moodBoardConceptIds.includes(c.id))
+                              .map((c) => (
+                                <div
+                                  key={c.id}
+                                  className="relative bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-2"
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-semibold text-slate-900 truncate">
+                                        {c.title || 'Untitled concept'}
+                                      </p>
+                                      <p className="text-[11px] text-slate-500">
+                                        <span className="font-mono">{c.asset_id}</span>
+                                        {c.kind && (
+                                          <span className="ml-1 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 capitalize">
+                                            {c.kind}
+                                          </span>
+                                        )}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setMoodBoardConceptIds((prev) => prev.filter((id) => id !== c.id))
+                                      }
+                                      className="text-[10px] text-slate-400 hover:text-red-500"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                  {c.file_url && c.file_type?.startsWith('image') && (
+                                    <div className="rounded-lg overflow-hidden border border-slate-100">
+                                      <img
+                                        src={c.file_url}
+                                        alt={c.title || c.file_name || 'Uploaded concept asset'}
+                                        className="w-full h-32 object-cover"
+                                      />
+                                    </div>
                                   )}
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setMoodBoardConceptIds((prev) => prev.filter((id) => id !== c.id))
-                                }
-                                className="text-[10px] text-slate-400 hover:text-red-500"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                            {c.description && (
-                              <p className="text-[11px] text-slate-600 line-clamp-3">{c.description}</p>
-                            )}
-                            {c.notes && (
-                              <p className="text-[10px] text-slate-400 line-clamp-2 border-t border-dashed border-slate-200 pt-1 mt-1">
-                                {c.notes}
-                              </p>
-                            )}
+                                  {c.file_url && c.file_type?.startsWith('video') && (
+                                    <div className="rounded-lg overflow-hidden border border-slate-100">
+                                      <video
+                                        src={c.file_url}
+                                        controls
+                                        className="w-full h-32 object-cover"
+                                      />
+                                    </div>
+                                  )}
+                                  {c.file_url && c.file_type === 'application/pdf' && (
+                                    <div className="text-[11px] text-slate-600 flex items-center gap-2">
+                                      <span className="font-semibold">PDF:</span>
+                                      <a
+                                        href={c.file_url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-teal-700 hover:underline"
+                                      >
+                                        {c.file_name || 'Open PDF'}
+                                      </a>
+                                    </div>
+                                  )}
+                                  {c.description && (
+                                    <p className="text-[11px] text-slate-600 line-clamp-3">{c.description}</p>
+                                  )}
+                                  {c.notes && (
+                                    <p className="text-[10px] text-slate-400 line-clamp-2 border-t border-dashed border-slate-200 pt-1 mt-1">
+                                      {c.notes}
+                                    </p>
+                                  )}
                             {c.generatedPrompt && (
                               <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">
                                 Prompt: <span className="text-slate-600">{c.generatedPrompt}</span>
