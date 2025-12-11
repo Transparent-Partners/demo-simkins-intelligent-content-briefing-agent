@@ -185,6 +185,7 @@ type DeliveryDestinationRow = {
 type DestinationEntry = {
   name: string;
   audience?: string;
+  spec_id?: string;
 };
 
 type ProductionJobRow = {
@@ -212,10 +213,6 @@ type ProductionMatrixLine = {
   destinations: DestinationEntry[];
   notes: string;
   is_feed: boolean;
-  feed_template: string;
-  template_id?: string;
-  feed_id?: string;
-  feed_asset_id?: string;
   production_details?: string;
 };
 
@@ -814,10 +811,6 @@ const deriveProductionRowsFromMatrix = (rows: MatrixRow[]): ProductionMatrixLine
       destinations: dests,
       notes: r.notes || '',
       is_feed: false,
-      feed_template: '',
-      template_id: '',
-      feed_id: '',
-      feed_asset_id: '',
       production_details: '',
     };
   });
@@ -1064,6 +1057,56 @@ export default function Home() {
         'Static hero frame that pairs the product with a simplified “Glow Grid” overlay showing morning, mid-day, and evening use moments.',
       notes: 'Use existing brand photography; keep grid minimal and legible on mobile. No small text blocks.',
       kind: 'image',
+      status: 'idle',
+    },
+    {
+      id: 'CON-003',
+      asset_id: 'CAR-001',
+      title: 'Proof Stack Carousel',
+      description:
+        'Carousel that pairs three proof tiles (time saved, lift in KPIs, testimonial) with a consistent visual system.',
+      notes: 'Each card should be self-contained; avoid heavy body copy. Keep proof numbers bold.',
+      kind: 'image',
+      status: 'idle',
+    },
+    {
+      id: 'CON-004',
+      asset_id: 'VID-002',
+      title: 'Signal → Action Explainer',
+      description:
+        '15–20s video showing a signal entering the system and the adaptive content response across two channels.',
+      notes: 'Use simple UI motion graphics; keep labels legible on mobile. CTA in final 3 seconds.',
+      kind: 'video',
+      status: 'idle',
+    },
+    {
+      id: 'CON-005',
+      asset_id: 'IMG-002',
+      title: 'System Blueprint One-Pager',
+      description:
+        'Static “blueprint” layout that maps campaign inputs, decisioning, and outputs with a hero hook and CTA.',
+      notes: 'Use a modular grid, minimal copy, and strong hierarchy; printable as PDF.',
+      kind: 'image',
+      status: 'idle',
+    },
+    {
+      id: 'CON-006',
+      asset_id: 'VID-003',
+      title: 'Creator + Data Split-Screen',
+      description:
+        'Split-screen vertical showing creator footage on left and dynamic metrics/variants on right to dramatize adaptability.',
+      notes: 'Balance motion between sides; add captions. Keep data labels short.',
+      kind: 'video',
+      status: 'idle',
+    },
+    {
+      id: 'CON-007',
+      asset_id: 'DOC-001',
+      title: 'Offer Matrix Cheat Sheet',
+      description:
+        'Single-page cheat sheet that lists audience → offer → channel mappings with best-performing variants.',
+      notes: 'Tabular layout with color-coded priority; include a quick “how to deploy” footer.',
+      kind: 'copy',
       status: 'idle',
     },
   ]);
@@ -1883,14 +1926,14 @@ export default function Home() {
     return DESTINATION_OPTIONS_BY_PLATFORM[spec.platform] || [spec.platform];
   };
 
-  const addDestinationToRow = (index: number, destination: string) => {
+  const addDestinationToRow = (index: number, destination: string, specId?: string) => {
     if (!destination) return;
     setProductionMatrixRows((prev) =>
       prev.map((row, i) => {
         if (i !== index) return row;
         const existing = (row.destinations || []).map((d) => d.name);
         if (existing.includes(destination)) return row;
-        const next = [...(row.destinations || []), { name: destination }];
+        const next = [...(row.destinations || []), { name: destination, spec_id: specId }];
         return { ...row, destinations: next };
       }),
     );
@@ -1964,43 +2007,99 @@ export default function Home() {
         };
       } = {};
       productionMatrixRows.forEach((row, idx) => {
-        const spec = specs.find((s) => s.id === row.spec_id);
-        const concept = concepts.find((c) => c.id === row.concept_id);
-        const conceptLabel = concept?.title || concept?.description || concept?.id || 'Untitled Concept';
-        const specLabel = spec ? `${spec.width}x${spec.height} ${spec.media_type}` : 'Spec not set';
+        const rowConcept = concepts.find((c) => c.id === row.concept_id);
+        const conceptLabel =
+          rowConcept?.title ||
+          rowConcept?.description ||
+          rowConcept?.id ||
+          'Untitled Concept';
+
+        // Meta suffixes for build instructions
         const metaSuffixParts = [];
         if (row.template_id) metaSuffixParts.push(`template:${row.template_id}`);
         if (row.feed_id) metaSuffixParts.push(`feed:${row.feed_id}`);
         if (row.feed_asset_id) metaSuffixParts.push(`asset:${row.feed_asset_id}`);
-        if (row.production_details && !row.is_feed) metaSuffixParts.push(`build:${row.production_details}`);
-        const metaSuffix = metaSuffixParts.length ? ` [${metaSuffixParts.join(' | ')}]` : '';
-        const destinations = (row.destinations || []).map((dest) => ({
-          platform_name: dest.name,
-          spec_id: spec?.id || row.spec_id || `SPEC-${idx + 1}`,
-          format_name: spec?.placement || spec?.media_type || '',
-          special_notes: dest.audience ? `Audience: ${dest.audience}` : row.notes,
-        }));
-        const jobId = row.id || `JOB-${idx + 1}`;
-        nextJobFeedMeta[jobId] = {
-          feed_template: row.feed_template || '',
-          template_id: row.template_id || '',
-          feed_id: row.feed_id || '',
-          feed_asset_id: row.feed_asset_id || '',
-          production_details: row.production_details || '',
-        };
-        jobs.push({
-          job_id: jobId,
-          creative_concept: conceptLabel,
-          asset_type: spec?.media_type || 'asset',
-          destinations,
-          technical_summary: `${specLabel}${metaSuffix}`,
-          status: 'Pending',
-          is_feed: row.is_feed,
-          feed_template: row.feed_template,
-          template_id: row.template_id,
-          feed_id: row.feed_id,
-          feed_asset_id: row.feed_asset_id,
-          production_details: row.production_details,
+        if (row.production_details && !row.is_feed)
+          metaSuffixParts.push(`build:${row.production_details}`);
+        const metaSuffix = metaSuffixParts.length
+          ? ` [${metaSuffixParts.join(' | ')}]`
+          : '';
+
+        // Group destinations by Spec ID
+        // If a destination has no specific spec_id, fall back to the row's main spec_id
+        const destsBySpec: Record<string, DestinationEntry[]> = {};
+        const unmappedDests: DestinationEntry[] = [];
+
+        (row.destinations || []).forEach((dest) => {
+          let sId = dest.spec_id || row.spec_id;
+          
+          // Try to infer spec from name if missing
+          if (!sId && dest.name) {
+             const match = specs.find(s => `${s.platform} · ${s.placement}` === dest.name);
+             if (match) sId = match.id;
+          }
+
+          if (sId) {
+            if (!destsBySpec[sId]) destsBySpec[sId] = [];
+            destsBySpec[sId].push(dest);
+          } else {
+            unmappedDests.push(dest);
+          }
+        });
+
+        // If no destinations but we have a row spec, create a placeholder job
+        if ((!row.destinations || row.destinations.length === 0) && row.spec_id) {
+          destsBySpec[row.spec_id] = [];
+        }
+
+        // Handle unmapped destinations (assign to row spec or 'Unknown')
+        if (unmappedDests.length > 0) {
+          const fallback = row.spec_id || 'UNKNOWN_SPEC';
+          if (!destsBySpec[fallback]) destsBySpec[fallback] = [];
+          destsBySpec[fallback].push(...unmappedDests);
+        }
+
+        // Generate a job for each Spec bucket
+        Object.entries(destsBySpec).forEach(([sId, dests], i) => {
+          const spec = specs.find((s) => s.id === sId);
+          const specLabel = spec
+            ? `${spec.width}x${spec.height} ${spec.media_type}`
+            : 'Spec not set';
+
+          const jobDestinations = dests.map((dest) => ({
+            platform_name: dest.name,
+            spec_id: sId,
+            format_name: spec?.placement || spec?.media_type || '',
+            special_notes: dest.audience ? `Audience: ${dest.audience}` : row.notes,
+          }));
+
+          // Create unique Job ID for this slice
+          // If we exploded into multiple jobs, append suffix
+          const baseId = row.id || `JOB-${idx + 1}`;
+          const jobId = Object.keys(destsBySpec).length > 1 ? `${baseId}-${i + 1}` : baseId;
+
+          nextJobFeedMeta[jobId] = {
+            feed_template: row.feed_template || '',
+            template_id: row.template_id || '',
+            feed_id: row.feed_id || '',
+            feed_asset_id: row.feed_asset_id || '',
+            production_details: row.production_details || '',
+          };
+
+          jobs.push({
+            job_id: jobId,
+            creative_concept: conceptLabel,
+            asset_type: spec?.media_type || 'asset',
+            destinations: jobDestinations,
+            technical_summary: `${specLabel}${metaSuffix}`,
+            status: 'Pending',
+            is_feed: row.is_feed,
+            feed_template: row.feed_template,
+            template_id: row.template_id,
+            feed_id: row.feed_id,
+            feed_asset_id: row.feed_asset_id,
+            production_details: row.production_details,
+          });
         });
       });
       setBuilderJobs(jobs);
@@ -2273,6 +2372,62 @@ export default function Home() {
     setAudienceImportColumns([]);
     setAudienceImportMapping({});
   }
+
+  // Keep production matrix audience/segment data aligned with the latest strategy rows
+  useEffect(() => {
+    setProductionMatrixRows((prev) => {
+      const derived = deriveProductionRowsFromMatrix(matrixRows);
+      let changed = derived.length !== prev.length;
+
+      const next = derived.map((derivedRow, idx) => {
+        const existing = prev[idx];
+        const id = existing?.id || derivedRow.id || `PR-${(idx + 1).toString().padStart(3, '0')}`;
+
+        if (existing) {
+          const updated: ProductionMatrixLine = {
+            ...existing,
+            id,
+            segment_source: derivedRow.segment_source ?? existing.segment_source,
+            audience: derivedRow.audience ?? existing.audience,
+            notes: existing.notes || derivedRow.notes,
+          };
+
+          if (!existing.spec_id && (!existing.destinations || existing.destinations.length === 0)) {
+            updated.destinations = derivedRow.destinations;
+          }
+
+          if (
+            updated.segment_source !== existing.segment_source ||
+            updated.audience !== existing.audience ||
+            updated.notes !== existing.notes ||
+            updated.destinations !== existing.destinations
+          ) {
+            changed = true;
+          }
+
+          return updated;
+        }
+
+        changed = true;
+        return {
+          ...derivedRow,
+          id,
+          concept_id: '',
+          spec_id: '',
+          destinations: derivedRow.destinations || [],
+          notes: derivedRow.notes || '',
+          is_feed: false,
+          production_details: '',
+        };
+      });
+
+      if (prev.length > derived.length) {
+        next.push(...prev.slice(derived.length));
+      }
+
+      return changed ? next : prev;
+    });
+  }, [matrixRows]);
 
   function createSpec() {
     setCreateSpecError(null);
@@ -3186,23 +3341,27 @@ export default function Home() {
                                         className="flex-1 border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
                                         value=""
                                         onChange={(e) => {
-                                          addDestinationToRow(index, e.target.value);
+                                          const val = e.target.value;
+                                          if (!val) return;
+                                          const parts = val.split(':::');
+                                          if (parts.length === 2) {
+                                            addDestinationToRow(index, parts[1], parts[0]);
+                                          }
                                         }}
-                                        disabled={!row.spec_id}
                                       >
-                                        <option value="">
-                                          {row.spec_id ? 'Add destination' : 'Select a spec first'}
-                                        </option>
-                                        {getDestinationOptionsForSpec(row.spec_id).map((opt) => (
-                                          <option key={opt} value={opt}>
-                                            {opt}
-                                          </option>
-                                        ))}
+                                        <option value="">Add destination...</option>
+                                        {specs.map((s) => {
+                                          const dName = `${s.platform} · ${s.placement}`;
+                                          return (
+                                            <option key={s.id} value={`${s.id}:::${dName}`}>
+                                              {dName}
+                                            </option>
+                                          );
+                                        })}
                                       </select>
                                       <input
                                         className="flex-1 border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
                                         placeholder="Custom destination"
-                                        disabled={!row.spec_id}
                                         onKeyDown={(e) => {
                                           if (e.key === 'Enter') {
                                             e.preventDefault();
@@ -3255,7 +3414,7 @@ export default function Home() {
                                       </div>
                                     )}
                                     <p className="text-[10px] text-slate-400">
-                                      Destinations filtered by spec’s platform; add multiples per asset and optionally tag audience.
+                                      Destinations determine the build specs. Add multiples per asset and optionally tag audience.
                                     </p>
                                   </td>
                                   <td className="px-3 py-2 align-top text-center">
