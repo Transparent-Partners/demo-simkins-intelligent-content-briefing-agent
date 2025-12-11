@@ -202,9 +202,11 @@ type ProductionJobRow = {
   feed_id?: string;
   feed_asset_id?: string;
   production_details?: string;
+  missing_destinations?: boolean;
 };
 
 type BuildDetails = {
+  build_direction?: string;
   copy_tone?: string;
   copy_length?: string;
   copy_cta?: string;
@@ -220,6 +222,12 @@ type BuildDetails = {
   video_voiceover?: string;
   audio_script?: string;
   audio_sfx?: string;
+};
+
+type RequirementField = {
+  id: string;
+  label: string;
+  value: string;
 };
 
 type ProductionMatrixLine = {
@@ -1064,6 +1072,7 @@ export default function Home() {
     }[];
   }>({});
   const [jobBuildDetails, setJobBuildDetails] = useState<{ [jobId: string]: BuildDetails }>({});
+  const [jobRequirementFields, setJobRequirementFields] = useState<{ [jobId: string]: RequirementField[] }>({});
   const [audienceImportOpen, setAudienceImportOpen] = useState(false);
   const [audienceImportColumns, setAudienceImportColumns] = useState<string[]>([]);
   const [audienceImportRows, setAudienceImportRows] = useState<any[]>([]);
@@ -1210,6 +1219,30 @@ export default function Home() {
       setConceptDetail(null);
     }
   }, [workspaceView, rightTab]);
+
+  useEffect(() => {
+    let changed = false;
+    setJobRequirementFields((prev) => {
+      const next = { ...prev };
+      builderJobs.forEach((job) => {
+        if (!next[job.job_id]) {
+          next[job.job_id] = getDefaultRequirementFields(job.asset_type);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    setJobBuildDetails((prev) => {
+      const next = { ...prev };
+      builderJobs.forEach((job) => {
+        if (!next[job.job_id]) {
+          next[job.job_id] = {};
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [builderJobs]);
 
   const toggleMatrixRowExpanded = (index: number) => {
     setExpandedMatrixRows((prev) => ({ ...prev, [index]: !prev[index] }));
@@ -2036,6 +2069,58 @@ export default function Home() {
     return 'image';
   };
 
+  const getDefaultRequirementFields = (assetType: string): RequirementField[] => {
+    const type = (assetType || '').toLowerCase();
+    if (type === 'copy') {
+      return [
+        { id: 'headline', label: 'Headline', value: '' },
+        { id: 'body', label: 'Body', value: '' },
+        { id: 'cta', label: 'CTA', value: '' },
+        { id: 'tone', label: 'Tone/Voice', value: '' },
+        { id: 'word_count', label: 'Word count', value: '' },
+        { id: 'legal', label: 'Legal/Disclaimers', value: '' },
+      ];
+    }
+    if (type === 'h5') {
+      return [
+        { id: 'frame1', label: 'Frame 1 (Hook)', value: '' },
+        { id: 'frame2', label: 'Frame 2 (Value)', value: '' },
+        { id: 'frame3', label: 'Frame 3 (CTA)', value: '' },
+        { id: 'interaction', label: 'Interaction/CTA', value: '' },
+        { id: 'animation', label: 'Animation notes', value: '' },
+        { id: 'safe', label: 'Safe zones', value: '' },
+      ];
+    }
+    if (type === 'video') {
+      return [
+        { id: 'hook', label: 'Hook (0-3s)', value: '' },
+        { id: 'beats', label: 'Story beats', value: '' },
+        { id: 'cta_card', label: 'CTA/End card', value: '' },
+        { id: 'duration', label: 'Duration', value: '' },
+        { id: 'captions', label: 'Captions', value: '' },
+        { id: 'safe', label: 'Aspect/Safe zones', value: '' },
+      ];
+    }
+    if (type === 'audio') {
+      return [
+        { id: 'script', label: 'Script', value: '' },
+        { id: 'vo', label: 'VO tone', value: '' },
+        { id: 'sfx', label: 'SFX/Music', value: '' },
+        { id: 'cta', label: 'CTA/Tag', value: '' },
+        { id: 'length', label: 'Length', value: '' },
+      ];
+    }
+    // default image
+    return [
+      { id: 'composition', label: 'Composition', value: '' },
+      { id: 'subject', label: 'Subject', value: '' },
+      { id: 'background', label: 'Background', value: '' },
+      { id: 'text_overlay', label: 'Text overlay', value: '' },
+      { id: 'brand_elements', label: 'Brand elements', value: '' },
+      { id: 'safe', label: 'Safe zones', value: '' },
+    ];
+  };
+
   const updateJobFeedMeta = (
     jobId: string,
     field: 'feed_template' | 'template_id' | 'feed_id' | 'feed_asset_id' | 'production_details',
@@ -2104,6 +2189,24 @@ export default function Home() {
       },
     }));
   };
+
+  const addRequirementField = (jobId: string) => {
+    const id =
+      (typeof crypto !== 'undefined' && 'randomUUID' in crypto && crypto.randomUUID && crypto.randomUUID()) ||
+      `REQ-${Date.now()}`;
+    setJobRequirementFields((prev) => ({
+      ...prev,
+      [jobId]: [...(prev[jobId] || []), { id, label: 'Custom field', value: '' }],
+    }));
+  };
+
+  const updateRequirementFieldValue = (jobId: string, fieldId: string, key: 'label' | 'value', value: string) => {
+    setJobRequirementFields((prev) => ({
+      ...prev,
+      [jobId]: (prev[jobId] || []).map((f) => (f.id === fieldId ? { ...f, [key]: value } : f)),
+    }));
+  };
+
 
   const sendSpecsToProduction = () => {
     // Move to the Requirements tab and, if possible, generate jobs immediately.
@@ -2210,6 +2313,7 @@ export default function Home() {
             format_name: spec?.placement || spec?.media_type || '',
             special_notes: dest.audience ? `Audience: ${dest.audience}` : row.notes,
           }));
+          const hasDestinations = jobDestinations.length > 0;
 
           // Create unique Job ID for this slice
           // If we exploded into multiple jobs, append suffix
@@ -2224,14 +2328,15 @@ export default function Home() {
             production_details: row.production_details || '',
           };
 
-          const inferredAssetType = inferAssetType(spec, dests);
+          const inferredAssetType = hasDestinations ? inferAssetType(spec, dests) : 'asset';
+          const destinationNotice = hasDestinations ? '' : ' | No destination selected';
 
           jobs.push({
             job_id: jobId,
             creative_concept: conceptLabel,
             asset_type: inferredAssetType,
             destinations: jobDestinations,
-            technical_summary: `${specLabel}${metaSuffix}`,
+            technical_summary: `${specLabel}${metaSuffix}${destinationNotice}`,
             status: 'Pending',
             is_feed: row.is_feed,
             feed_template: row.feed_template,
@@ -2239,6 +2344,7 @@ export default function Home() {
             feed_id: row.feed_id,
             feed_asset_id: row.feed_asset_id,
             production_details: row.production_details,
+            missing_destinations: !hasDestinations,
           });
         });
       });
@@ -4195,6 +4301,7 @@ export default function Home() {
                                     const specMissing =
                                       (job.technical_summary || '').toLowerCase().includes('spec not set') ||
                                       job.asset_type === 'asset';
+                                    const missingDestinations = job.missing_destinations || job.destinations.length === 0;
                                     return (
                                       <tr key={job.job_id} className="border-b border-slate-100 align-top">
                                         <td className="py-1.5 pr-4">
@@ -4202,6 +4309,11 @@ export default function Home() {
                                             {job.asset_type} – {job.creative_concept}
                                           </div>
                                           <div className="text-[10px] text-slate-400">{job.job_id}</div>
+                                          {missingDestinations && (
+                                            <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1">
+                                              No destination selected; asset type cannot be finalized.
+                                            </p>
+                                          )}
                                         </td>
                                         <td className="py-1.5 pr-4 text-slate-700">
                                           {job.technical_summary}
@@ -4234,6 +4346,20 @@ export default function Home() {
                                                   Spec missing – assign a spec to generate build details for this asset type.
                                                 </p>
                                               )}
+                                              {missingDestinations && (
+                                                <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                                                  No destination selected – pick a destination to set asset type and build details.
+                                                </p>
+                                              )}
+                                              <textarea
+                                                className="w-full border border-slate-300 rounded-md px-2 py-1 text-[11px] resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                rows={3}
+                                                placeholder="Build direction for production team (free form)."
+                                                value={buildDirection}
+                                                onChange={(e) =>
+                                                  updateBuildDetail(job.job_id, 'build_direction' as any, e.target.value)
+                                                }
+                                              />
                                               <div className="flex gap-2">
                                                 <input
                                                   className="w-1/2 border border-slate-300 rounded-md px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
@@ -4273,15 +4399,26 @@ export default function Home() {
                                               </p>
                                             </div>
                                           ) : (
-                                            <textarea
-                                              className="w-full min-w-[200px] text-[11px] border border-slate-300 rounded-md px-2 py-1 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                              rows={3}
-                                              placeholder="File type, safe zones, animation asks."
-                                              value={meta.production_details ?? job.production_details ?? ''}
-                                              onChange={(e) =>
-                                                updateJobFeedMeta(job.job_id, 'production_details', e.target.value)
-                                              }
-                                            />
+                                            <div className="space-y-1.5">
+                                              <textarea
+                                                className="w-full min-w-[200px] text-[11px] border border-slate-300 rounded-md px-2 py-1 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                rows={3}
+                                                placeholder="Build direction for production team (free form)."
+                                                value={buildDirection}
+                                                onChange={(e) =>
+                                                  updateBuildDetail(job.job_id, 'build_direction' as any, e.target.value)
+                                                }
+                                              />
+                                              <textarea
+                                                className="w-full min-w-[200px] text-[11px] border border-slate-300 rounded-md px-2 py-1 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                rows={3}
+                                                placeholder="File type, safe zones, animation asks."
+                                                value={meta.production_details ?? job.production_details ?? ''}
+                                                onChange={(e) =>
+                                                  updateJobFeedMeta(job.job_id, 'production_details', e.target.value)
+                                                }
+                                              />
+                                            </div>
                                           )}
                                         </td>
                                         <td className="py-1.5 pr-4 text-slate-700">
@@ -4291,13 +4428,53 @@ export default function Home() {
                                                 Spec missing – set a spec to tailor build details and requirements.
                                               </p>
                                             )}
+                                            {missingDestinations && (
+                                              <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                                                No destination selected – add a destination to finalize asset type and requirements.
+                                              </p>
+                                            )}
+                                            <div className="flex flex-wrap gap-2">
+                                              {(jobRequirementFields[job.job_id] ||
+                                                getDefaultRequirementFields(job.asset_type)).map((field) => (
+                                                <div
+                                                  key={field.id}
+                                                  className="min-w-[220px] flex-1 border border-slate-200 rounded-lg bg-white px-2.5 py-2 shadow-[0_1px_0_rgba(0,0,0,0.02)]"
+                                                >
+                                                  <div className="flex items-center justify-between gap-2 mb-1">
+                                                    <input
+                                                      className="flex-1 border border-slate-200 rounded px-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-500/50 focus:border-teal-500"
+                                                      value={field.label}
+                                                      onChange={(e) =>
+                                                        updateRequirementFieldValue(job.job_id, field.id, 'label', e.target.value)
+                                                      }
+                                                    />
+                                                  </div>
+                                                  <textarea
+                                                    className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                                    rows={2}
+                                                    placeholder="Requirement detail"
+                                                    value={field.value}
+                                                    onChange={(e) =>
+                                                      updateRequirementFieldValue(job.job_id, field.id, 'value', e.target.value)
+                                                    }
+                                                  />
+                                                </div>
+                                              ))}
+                                              <button
+                                                type="button"
+                                                onClick={() => addRequirementField(job.job_id)}
+                                                className="px-3 py-2 text-[11px] rounded-lg border border-dashed border-slate-300 text-slate-600 bg-slate-50 hover:bg-slate-100"
+                                              >
+                                                + Add field
+                                              </button>
+                                            </div>
                                             <textarea
-                                              className="w-full min-w-[220px] text-[11px] border border-slate-300 rounded-md px-2 py-1 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                              rows={3}
+                                              className="w-full border border-slate-300 rounded-md px-2 py-1 text-[11px] resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                              rows={2}
                                               placeholder={
                                                 uniqueNotes.length
                                                   ? `Key cautions: ${uniqueNotes.join(' | ')}`
-                                                  : 'Capture source asset requirements, editing notes, or handoff details.'
+                                                  : 'Any remaining notes for requirements.'
                                               }
                                               value={requirementsValue}
                                               onChange={(e) =>
@@ -4449,6 +4626,10 @@ export default function Home() {
                               const specMissing =
                                 (job.technical_summary || '').toLowerCase().includes('spec not set') ||
                                 job.asset_type === 'asset';
+                              const missingDestinations = job.missing_destinations || job.destinations.length === 0;
+                              const requirementFields =
+                                jobRequirementFields[job.job_id] || getDefaultRequirementFields(job.asset_type);
+                              const buildDirection = jobBuildDetails[job.job_id]?.build_direction || '';
                               const humanStatus =
                                 status === 'In_Progress' ? 'In Progress' : status === 'Review' ? 'In Review' : status;
                               const progressColor =
@@ -4480,6 +4661,11 @@ export default function Home() {
                                       </span>
                                     </div>
                                     <p className="text-[11px] text-slate-700">{job.technical_summary}</p>
+                                    {missingDestinations && (
+                                      <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                                        No destination selected – add one to finalize asset type and creative build.
+                                      </p>
+                                    )}
                                     {specMissing && (
                                       <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
                                         Spec missing – add a spec to unlock tailored build details and requirements.
@@ -4504,9 +4690,30 @@ export default function Home() {
                                       <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
                                         Requirements
                                       </p>
-                                      <p className="text-[11px] text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-lg px-2 py-2">
-                                        {requirementsValue || 'No requirements added yet.'}
-                                      </p>
+                                      {requirementFields.length ? (
+                                        <div className="flex flex-wrap gap-2">
+                                          {requirementFields.map((field) => (
+                                            <div
+                                              key={field.id}
+                                              className="min-w-[200px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"
+                                            >
+                                              <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                                                {field.label || 'Field'}
+                                              </p>
+                                              <p className="text-[11px] text-slate-700 whitespace-pre-wrap mt-0.5">
+                                                {field.value || 'No detail added.'}
+                                              </p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="text-[11px] text-slate-500">No requirements added yet.</p>
+                                      )}
+                                      {requirementsValue && (
+                                        <p className="text-[11px] text-slate-600 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-lg px-2 py-2">
+                                          {requirementsValue}
+                                        </p>
+                                      )}
                                     </div>
                                     {copyBlocks.length > 0 && (
                                       <div className="space-y-1">
@@ -4538,12 +4745,18 @@ export default function Home() {
                                         </div>
                                       </div>
                                     )}
-                                    {(meta.production_details || meta.feed_template || meta.template_id || meta.feed_id || meta.feed_asset_id) && (
+                                    {(buildDirection ||
+                                      meta.production_details ||
+                                      meta.feed_template ||
+                                      meta.template_id ||
+                                      meta.feed_id ||
+                                      meta.feed_asset_id) && (
                                       <div className="space-y-1">
                                         <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
                                           Build Details
                                         </p>
                                         <div className="text-[11px] text-slate-700 space-y-0.5">
+                                          {buildDirection && <p>Direction: {buildDirection}</p>}
                                           {meta.production_details && <p>Build: {meta.production_details}</p>}
                                           {meta.feed_template && <p>Feed template: {meta.feed_template}</p>}
                                           {meta.template_id && <p>Template ID: {meta.template_id}</p>}
