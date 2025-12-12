@@ -1618,14 +1618,18 @@ export default function Home() {
     }));
   };
 
-  const applyPartnerFields = (partner: string) => {
+  const applyPartnerFields = (partner: string, target: 'feed' | 'mapping' | 'both' = 'both') => {
     const fields = feedFieldPartners[partner];
     if (!fields) return;
-    setFeedFields(fields);
-    setVisibleFeedFields(fields.map((f) => f.key));
-    setFeedFieldLibrary(fields);
-    setDestinationFieldLibrary(fields.map((f) => f.key));
-    setFeedMappingPlatform(partner);
+    if (target !== 'mapping') {
+      setFeedFields(fields);
+      setVisibleFeedFields(fields.map((f) => f.key));
+      setFeedFieldLibrary(fields);
+    }
+    if (target !== 'feed') {
+      setDestinationFieldLibrary(fields.map((f) => f.key));
+      setFeedMappingPlatform(partner);
+    }
     setShowPartnerLibrary(false);
   };
 
@@ -6143,18 +6147,25 @@ export default function Home() {
                     >
                       {feedRows.length === 0 ? 'Add first row' : 'Add row'}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowFeedFieldConfig((prev) => !prev)}
-                      className="text-[11px] px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
-                    >
-                      Feed Fields
-                    </button>
-                    <button
-                      type="button"
-                      onClick={exportFeedCsv}
-                      disabled={!feedRows.length}
-                      className="px-4 py-2 text-xs font-semibold rounded-full border border-slate-300 text-slate-700 bg-white disabled:opacity-50"
+                <button
+                  type="button"
+                  onClick={() => setShowFeedFieldConfig((prev) => !prev)}
+                  className="text-[11px] px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
+                >
+                  Feed Fields
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPartnerLibrary(true)}
+                  className="text-[11px] px-3 py-1.5 rounded-full border border-teal-500 text-teal-700 bg-white hover:bg-teal-50"
+                >
+                  Partner Field Library
+                </button>
+                <button
+                  type="button"
+                  onClick={exportFeedCsv}
+                  disabled={!feedRows.length}
+                  className="px-4 py-2 text-xs font-semibold rounded-full border border-slate-300 text-slate-700 bg-white disabled:opacity-50"
                     >
                       Export to CSV
                     </button>
@@ -6260,16 +6271,16 @@ export default function Home() {
                         </div>
                         <div className="flex items-center justify-between">
                           <p className="text-[10px] text-slate-500">
-                            Need all saved fields? Apply feed library directly.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setShowPartnerLibrary(true)}
-                            className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
-                          >
-                            Open partner library
-                          </button>
-                        </div>
+                        Need all saved fields? Apply feed library directly.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowPartnerLibrary(true)}
+                        className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
+                      >
+                        Open partner library
+                      </button>
+                    </div>
                       </div>
                     </div>
                   )}
@@ -6304,11 +6315,11 @@ export default function Home() {
                             </div>
                             <button
                               type="button"
-                              onClick={() => setShowPartnerLibrary(true)}
-                              className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
-                            >
-                              Load library
-                            </button>
+                        onClick={() => setShowPartnerLibrary(true)}
+                        className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
+                      >
+                        Load library
+                      </button>
                             <button
                               type="button"
                               onClick={() => setShowFeedSourceFields((prev) => !prev)}
@@ -6600,7 +6611,7 @@ export default function Home() {
                   <div
                     key={partner}
                     className="border border-slate-200 rounded-xl p-3 bg-slate-50/60 hover:border-teal-400 hover:bg-teal-50 cursor-pointer transition-colors"
-                    onClick={() => applyPartnerFields(partner)}
+                    onClick={() => applyPartnerFields(partner, 'both')}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -6611,11 +6622,11 @@ export default function Home() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          applyPartnerFields(partner);
+                          applyPartnerFields(partner, 'both');
                         }}
                         className="text-[10px] px-2 py-1 rounded-full border border-teal-400 text-teal-700 bg-white hover:bg-teal-50"
                       >
-                        Load
+                        Load both
                       </button>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1">
@@ -6632,6 +6643,28 @@ export default function Home() {
                           +{fields.length - 12} more
                         </span>
                       )}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          applyPartnerFields(partner, 'feed');
+                        }}
+                        className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-700 bg-white hover:bg-teal-50"
+                      >
+                        Load to feed fields
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          applyPartnerFields(partner, 'mapping');
+                        }}
+                        className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-700 bg-white hover:bg-teal-50"
+                      >
+                        Load to field mapping
+                      </button>
                     </div>
                   </div>
                 ))}
