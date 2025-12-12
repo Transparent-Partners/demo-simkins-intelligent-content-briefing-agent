@@ -318,6 +318,82 @@ const BASE_FEED_FIELDS: FeedFieldConfig[] = [
   { key: 'utm_suffix', label: 'UTM Suffix' },
 ];
 
+const PARTNER_FIELD_LIBRARY: Record<string, FeedFieldConfig[]> = {
+  Facebook: [
+    { key: 'primary_text', label: 'Primary Text' },
+    { key: 'headline', label: 'Headline' },
+    { key: 'description', label: 'Description' },
+    { key: 'cta', label: 'CTA' },
+    { key: 'link_url', label: 'Link URL' },
+    { key: 'display_link', label: 'Display Link' },
+    { key: 'image_url', label: 'Image URL' },
+    { key: 'video_url', label: 'Video URL' },
+    { key: 'tracking_template', label: 'Tracking Template' },
+  ],
+  Instagram: [
+    { key: 'caption', label: 'Caption' },
+    { key: 'cta', label: 'CTA' },
+    { key: 'image_url', label: 'Image URL' },
+    { key: 'reel_url', label: 'Reel/Video URL' },
+    { key: 'landing_url', label: 'Landing URL' },
+    { key: 'hashtags', label: 'Hashtags' },
+    { key: 'sponsored_tag', label: 'Sponsored Tag' },
+  ],
+  TikTok: [
+    { key: 'primary_text', label: 'Primary Text' },
+    { key: 'cta_text', label: 'CTA Text' },
+    { key: 'video_url', label: 'Video URL' },
+    { key: 'landing_url', label: 'Landing URL' },
+    { key: 'display_name', label: 'Display Name' },
+    { key: 'tracking_code', label: 'Tracking Code' },
+  ],
+  DV360: [
+    { key: 'headline', label: 'Headline' },
+    { key: 'long_headline', label: 'Long Headline' },
+    { key: 'description', label: 'Description' },
+    { key: 'cta_text', label: 'CTA Text' },
+    { key: 'image_url', label: 'Image URL' },
+    { key: 'video_url', label: 'Video URL' },
+    { key: 'landing_url', label: 'Landing URL' },
+    { key: 'backup_image', label: 'Backup Image' },
+    { key: 'impression_pixel', label: 'Impression Pixel' },
+  ],
+  LinkedIn: [
+    { key: 'intro_text', label: 'Intro Text' },
+    { key: 'headline', label: 'Headline' },
+    { key: 'description', label: 'Description' },
+    { key: 'cta', label: 'CTA' },
+    { key: 'image_url', label: 'Image URL' },
+    { key: 'video_url', label: 'Video URL' },
+    { key: 'destination_url', label: 'Destination URL' },
+    { key: 'lead_form_id', label: 'Lead Form ID' },
+  ],
+  Innovid: [
+    { key: 'primary_asset', label: 'Primary Asset' },
+    { key: 'backup_image', label: 'Backup Image' },
+    { key: 'click_url', label: 'Click URL' },
+    { key: 'beacon_url', label: 'Beacon URL' },
+    { key: 'tracking_code', label: 'Tracking Code' },
+    { key: 'dynamic_key', label: 'Dynamic Data Key' },
+    { key: 'data_feed_url', label: 'Data Feed URL' },
+    { key: 'cta_text', label: 'CTA Text' },
+  ],
+  GCM: [
+    { key: 'headline', label: 'Headline' },
+    { key: 'description', label: 'Description' },
+    { key: 'final_url', label: 'Final URL' },
+    { key: 'path1', label: 'Path 1' },
+    { key: 'path2', label: 'Path 2' },
+    { key: 'utm', label: 'UTM' },
+    { key: 'image_url', label: 'Image URL' },
+    { key: 'backup_image', label: 'Backup Image' },
+    { key: 'impression_url', label: 'Impression URL' },
+    { key: 'click_tracker', label: 'Click Tracker' },
+  ],
+};
+
+const DEFAULT_FEED_PLATFORM = Object.keys(PARTNER_FIELD_LIBRARY)[0] || 'Meta';
+
 const INITIAL_STRATEGY_MATRIX_RUNNING_SHOES: MatrixRow[] = [
   {
     segment_source: 'CRM + site analytics',
@@ -1143,56 +1219,27 @@ export default function Home() {
   );
   const [showFeedFieldConfig, setShowFeedFieldConfig] = useState(false);
   const [feedFieldLibrary, setFeedFieldLibrary] = useState<FeedFieldConfig[]>(BASE_FEED_FIELDS);
-  const [feedFieldPartners, setFeedFieldPartners] = useState<Record<string, FeedFieldConfig[]>>({
-    Meta: [
-      { key: 'title', label: 'Title' },
-      { key: 'body', label: 'Body' },
-      { key: 'cta', label: 'CTA' },
-      { key: 'image_url', label: 'Image URL' },
-      { key: 'tracking_code', label: 'Tracking Code' },
-    ],
-    TikTok: [
-      { key: 'primary_text', label: 'Primary Text' },
-      { key: 'cta_text', label: 'CTA Text' },
-      { key: 'video_url', label: 'Video URL' },
-      { key: 'landing_url', label: 'Landing URL' },
-    ],
-    DV360: [
-      { key: 'headline', label: 'Headline' },
-      { key: 'description', label: 'Description' },
-      { key: 'cta_text', label: 'CTA Text' },
-      { key: 'image_url', label: 'Image URL' },
-      { key: 'landing_url', label: 'Landing URL' },
-    ],
-    LinkedIn: [
-      { key: 'intro_text', label: 'Intro Text' },
-      { key: 'headline', label: 'Headline' },
-      { key: 'cta', label: 'CTA' },
-      { key: 'image_url', label: 'Image URL' },
-      { key: 'destination_url', label: 'Destination URL' },
-    ],
-  });
-  const [feedMappingPlatform, setFeedMappingPlatform] = useState<string>('Meta');
+  const [showPartnerLibrary, setShowPartnerLibrary] = useState(false);
+  const [feedFieldPartners, setFeedFieldPartners] =
+    useState<Record<string, FeedFieldConfig[]>>(PARTNER_FIELD_LIBRARY);
+  const [feedMappingPlatform, setFeedMappingPlatform] = useState<string>(DEFAULT_FEED_PLATFORM);
   const [feedFieldMappings, setFeedFieldMappings] = useState<
     { id: string; source: string; destination: string; platform: string }[]
   >([]);
-  const DESTINATION_TEMPLATES: Record<string, string[]> = {
-    Meta: ['title', 'body', 'cta', 'image_url', 'video_url', 'tracking_code'],
-    GCM: ['headline', 'description', 'final_url', 'path1', 'path2', 'utm'],
-    Innovid: ['primary_asset', 'backup_image', 'click_url', 'beacon_url', 'tracking_code'],
-    StoryTeq: ['variant_key', 'copy_slot_a', 'copy_slot_b', 'asset_url', 'cta_text'],
-    TikTok: ['primary_text', 'cta', 'video_url', 'landing_url', 'tracking_code'],
-    DV360: ['headline', 'description', 'cta', 'image_url', 'landing_url'],
-    LinkedIn: ['intro_text', 'headline', 'cta', 'image_url', 'destination_url'],
-  };
-  const [destinationFieldLibrary, setDestinationFieldLibrary] = useState<string[]>([
-    'title',
-    'body',
-    'cta',
-    'image_url',
-    'video_url',
-    'tracking_code',
-  ]);
+  const destinationTemplates = useMemo(() => {
+    const baseTemplates: Record<string, string[]> = {
+      StoryTeq: ['variant_key', 'copy_slot_a', 'copy_slot_b', 'asset_url', 'cta_text'],
+    };
+    Object.entries(feedFieldPartners).forEach(([partner, fields]) => {
+      baseTemplates[partner] = fields.map((f) => f.key);
+    });
+    return baseTemplates;
+  }, [feedFieldPartners]);
+  const [destinationFieldLibrary, setDestinationFieldLibrary] = useState<string[]>(() => {
+    const defaults = PARTNER_FIELD_LIBRARY[DEFAULT_FEED_PLATFORM] || [];
+    if (defaults.length) return defaults.map((f) => f.key);
+    return ['title', 'body', 'cta', 'image_url', 'video_url', 'tracking_code'];
+  });
   const [dragSourceField, setDragSourceField] = useState<string | null>(null);
   const [showFeedMapping, setShowFeedMapping] = useState(true);
   const [showFeedSourceFields, setShowFeedSourceFields] = useState(true);
@@ -1577,6 +1624,9 @@ export default function Home() {
     setFeedFields(fields);
     setVisibleFeedFields(fields.map((f) => f.key));
     setFeedFieldLibrary(fields);
+    setDestinationFieldLibrary(fields.map((f) => f.key));
+    setFeedMappingPlatform(partner);
+    setShowPartnerLibrary(false);
   };
 
   const addPartnerTemplate = () => {
@@ -1604,14 +1654,25 @@ export default function Home() {
   };
 
   const applyDestinationTemplate = (template: string) => {
-    const fields = DESTINATION_TEMPLATES[template];
+    const fields = destinationTemplates[template];
     if (!fields || !fields.length) return;
-    setDestinationFieldLibrary((prev) => {
-      const set = new Set(prev);
-      fields.forEach((f) => set.add(f));
-      return Array.from(set);
-    });
+    setDestinationFieldLibrary(fields);
   };
+
+  useEffect(() => {
+    const partnerFields = feedFieldPartners[feedMappingPlatform];
+    if (partnerFields && partnerFields.length) {
+      setDestinationFieldLibrary(partnerFields.map((f) => f.key));
+      setFeedFieldLibrary(partnerFields);
+    }
+  }, [feedMappingPlatform, feedFieldPartners]);
+
+  useEffect(() => {
+    if (!feedFieldPartners[feedMappingPlatform]) {
+      const firstPartner = Object.keys(feedFieldPartners)[0];
+      if (firstPartner) setFeedMappingPlatform(firstPartner);
+    }
+  }, [feedFieldPartners, feedMappingPlatform]);
 
   // Handle drag-to-resize for split view
   useEffect(() => {
@@ -4097,7 +4158,9 @@ export default function Home() {
 
               {workspaceView === 'production' && productionTab === 'requirements' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-4">
+                  {/* Single module: Plan + Jobs */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+                  <div className="flex items-center justify-between gap-4">
                     <div>
                       <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         Plan (Audience → Concept → Spec) (What & Where)
@@ -4116,13 +4179,13 @@ export default function Home() {
                   </div>
 
                   {!showPlan && (
-                    <div className="bg-white border border-dashed border-slate-200 rounded-xl p-4 text-[11px] text-slate-500">
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-500">
                       Plan is hidden. Expand to edit the audience → concept → spec mapping that feeds jobs.
                     </div>
                   )}
 
                     {showPlan && (
-                      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                      <div className="pt-3 border-t border-slate-200 space-y-3">
                         <div className="flex items-center justify-between">
                         <div>
                           <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -4401,7 +4464,7 @@ export default function Home() {
                   )}
 
                   {/* Production Requirements List – concept-to-spec grouper */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+                  <div className="pt-4 border-t border-slate-200 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -4739,10 +4802,11 @@ export default function Home() {
                         )}
                       </>
                     ) : (
-                      <div className="bg-white border border-dashed border-slate-200 rounded-xl p-4 text-[11px] text-slate-500">
+                      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-500">
                         Jobs module is collapsed. Expand to edit production jobs.
                       </div>
                     )}
+                  </div>
                   </div>
 
                   {/* Existing Production Matrix – asset-level kitchen tickets */}
@@ -6200,10 +6264,10 @@ export default function Home() {
                           </p>
                           <button
                             type="button"
-                            onClick={applyFeedLibrary}
+                            onClick={() => setShowPartnerLibrary(true)}
                             className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
                           >
-                            Load feed library
+                            Open partner library
                           </button>
                         </div>
                       </div>
@@ -6240,7 +6304,7 @@ export default function Home() {
                             </div>
                             <button
                               type="button"
-                              onClick={applyFeedLibrary}
+                              onClick={() => setShowPartnerLibrary(true)}
                               className="text-[10px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"
                             >
                               Load library
@@ -6296,7 +6360,7 @@ export default function Home() {
                                 <option value="" disabled>
                                   Load template…
                                 </option>
-                                {Object.keys(DESTINATION_TEMPLATES).map((tpl) => (
+                                {Object.keys(destinationTemplates).map((tpl) => (
                                   <option key={tpl} value={tpl}>
                                     {tpl}
                                   </option>
@@ -6362,11 +6426,15 @@ export default function Home() {
                                   setFeedMappingPlatform(e.target.value)
                                 }
                               >
-                                <option value="Meta">Meta</option>
-                                <option value="Google">Google</option>
-                                <option value="TikTok">TikTok</option>
-                                <option value="DV360">DV360</option>
-                                <option value="LinkedIn">LinkedIn</option>
+                                {Object.keys(feedFieldPartners).length === 0 ? (
+                                  <option value="">No partners</option>
+                                ) : (
+                                  Object.keys(feedFieldPartners).map((platform) => (
+                                    <option key={platform} value={platform}>
+                                      {platform}
+                                    </option>
+                                  ))
+                                )}
                               </select>
                               <button
                                 type="button"
@@ -6494,6 +6562,86 @@ export default function Home() {
           </div>
         </div>
       </>
+      )}
+
+      {showPartnerLibrary && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 px-4">
+          <div className="w-full max-w-5xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Partner field library</p>
+                <p className="text-[11px] text-slate-500">
+                  Pick a platform to load its creative fields into the feed builder and mapping view.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    applyFeedLibrary();
+                    setShowPartnerLibrary(false);
+                  }}
+                  className="text-[10px] px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-100"
+                >
+                  Use current feed library
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPartnerLibrary(false)}
+                  className="text-[10px] px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-100"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[70vh] overflow-auto">
+                {Object.entries(feedFieldPartners).map(([partner, fields]) => (
+                  <div
+                    key={partner}
+                    className="border border-slate-200 rounded-xl p-3 bg-slate-50/60 hover:border-teal-400 hover:bg-teal-50 cursor-pointer transition-colors"
+                    onClick={() => applyPartnerFields(partner)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-[12px] font-semibold text-slate-800">{partner}</p>
+                        <p className="text-[10px] text-slate-500">{fields.length} platform field(s)</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          applyPartnerFields(partner);
+                        }}
+                        className="text-[10px] px-2 py-1 rounded-full border border-teal-400 text-teal-700 bg-white hover:bg-teal-50"
+                      >
+                        Load
+                      </button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {fields.slice(0, 12).map((field) => (
+                        <span
+                          key={field.key}
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600"
+                        >
+                          {field.label}
+                        </span>
+                      ))}
+                      {fields.length > 12 && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 border border-dashed border-slate-200 text-slate-500">
+                          +{fields.length - 12} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {Object.keys(feedFieldPartners).length === 0 && (
+                  <p className="text-[11px] text-slate-500">No partner templates yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Concept detail shadowbox */}
