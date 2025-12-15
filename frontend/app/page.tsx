@@ -1140,6 +1140,11 @@ export default function Home() {
     flight_dates: {},
     status: 'Draft',
   });
+  // Completion score: instant, local heuristic (useful feedback while typing).
+  const [briefCompletionScore, setBriefCompletionScore] = useState<number | null>(null);
+  const [briefCompletionGaps, setBriefCompletionGaps] = useState<string[]>([]);
+
+  // Quality score: owned by the Quality Assistant (model-backed).
   const [briefQualityScore, setBriefQualityScore] = useState<number | null>(null);
   const [briefQualityGaps, setBriefQualityGaps] = useState<string[]>([]);
   const [briefQualityRationale, setBriefQualityRationale] = useState<string>('');
@@ -2880,8 +2885,8 @@ export default function Home() {
     const merged = { ...(briefState as any), ...(previewPlan as any) };
     const { score, gaps } = computeBriefQualityAndGaps(merged);
 
-    setBriefQualityScore((prev) => (prev === score ? prev : score));
-    setBriefQualityGaps((prev) => (prev.join('|') === gaps.join('|') ? prev : gaps));
+    setBriefCompletionScore((prev) => (prev === score ? prev : score));
+    setBriefCompletionGaps((prev) => (prev.join('|') === gaps.join('|') ? prev : gaps));
   }, [briefState, previewPlan]);
 
   // ECD-quality scoring agent (debounced) — runs only when not in demo mode.
@@ -3974,25 +3979,30 @@ export default function Home() {
                     <span className="text-[10px] font-semibold text-slate-500">Quality</span>
                     <span
                       className={`text-[11px] font-semibold ${
-                        briefQualityScore !== null && briefQualityScore >= 8
+                        (briefQualityScore ?? briefCompletionScore) !== null &&
+                        (briefQualityScore ?? briefCompletionScore)! >= 8
                           ? 'text-emerald-700'
                           : 'text-amber-700'
                       }`}
                     >
-                      {briefQualityScore !== null ? `${briefQualityScore.toFixed(1)}/10` : '—'}
+                      {(briefQualityScore ?? briefCompletionScore) !== null
+                        ? `${(briefQualityScore ?? briefCompletionScore)!.toFixed(1)}/10`
+                        : '—'}
                     </span>
                   </div>
-                  {briefQualityGaps.length > 0 && (
+                  {(briefQualityGaps.length > 0 || briefCompletionGaps.length > 0) && (
                     <div className="hidden sm:flex items-center gap-2 text-[10px] text-slate-500">
                       <span className="font-semibold text-slate-600">Gaps:</span>
-                      <span className="truncate max-w-[200px]">{briefQualityGaps.join(', ')}</span>
+                      <span className="truncate max-w-[200px]">
+                        {(briefQualityGaps.length ? briefQualityGaps : briefCompletionGaps).join(', ')}
+                      </span>
                     </div>
                   )}
                 </div>
               </div>
               {(briefQualityAgentLoading || briefQualityRationale) && (
                 <div className="mt-2 text-[10px] text-slate-500">
-                  <span className="font-semibold text-slate-600">ECD score:</span>{' '}
+                  <span className="font-semibold text-slate-600">Quality Assistant:</span>{' '}
                   <span className="truncate">
                     {briefQualityAgentLoading ? 'Scoring…' : briefQualityRationale}
                   </span>
