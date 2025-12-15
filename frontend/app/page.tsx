@@ -1820,7 +1820,7 @@ export default function Home() {
           content:
             `I could not reach the briefing agent.\n\n` +
             `Details: ${errMsg}\n\n` +
-            `Please confirm the API is running (port 8000) and your Gemini key is set (GOOGLE_API_KEY). If offline, toggle Demo Mode.`,
+            `Please confirm your API key is set (OPENAI_API_KEY or GOOGLE_API_KEY). If offline, toggle Demo Mode.`,
         },
       ]);
     }
