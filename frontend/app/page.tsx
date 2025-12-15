@@ -1763,8 +1763,9 @@ export default function Home() {
           return acc;
         }, { ...briefState } as Record<string, any>);
 
-        // Vercel edge sometimes redirects /brief/chat -> /brief/chat/ (308). Use trailing slash to avoid redirect quirks.
-        const briefChatUrl = API_BASE_URL ? `${API_BASE_URL}/brief/chat/` : '/brief/chat/';
+        // In production on Vercel, prefer same-origin live API (Next route handler): POST /brief/chat
+        // In local dev, if NEXT_PUBLIC_API_BASE_URL is set, use it.
+        const briefChatUrl = API_BASE_URL ? `${API_BASE_URL}/brief/chat` : '/brief/chat';
         const res = await fetch(briefChatUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
