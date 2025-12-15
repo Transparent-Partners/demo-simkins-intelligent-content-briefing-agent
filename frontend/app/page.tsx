@@ -1763,7 +1763,7 @@ export default function Home() {
           return acc;
         }, { ...briefState } as Record<string, any>);
 
-        const res = await fetch(`${API_BASE_URL}/brief/chat`, {
+        const res = await fetch('/api/brief', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
@@ -1774,30 +1774,9 @@ export default function Home() {
         });
         const data = await res.json();
         setMessages([...newHistory, { role: 'assistant', content: data.reply || '' }]);
-        if (typeof data.quality_score === 'number') {
-          setBriefQualityScore(data.quality_score);
-        }
-        if (Array.isArray(data.state?.gaps)) {
-          setBriefQualityGaps(data.state.gaps as string[]);
-        } else if (Array.isArray(data.gaps)) {
-          setBriefQualityGaps(data.gaps as string[]);
-        } else {
-          setBriefQualityGaps([]);
-        }
-        if (data.state) {
-          const nextBrief = data.state as ModConBriefState;
-          setBriefState(nextBrief);
-          setPreviewPlan((prev: any) => ({
-            ...prev,
-            ...nextBrief,
-            campaign_name: nextBrief.campaign_name || prev.campaign_name,
-            single_minded_proposition: (nextBrief as any).single_minded_proposition || nextBrief.smp || prev.single_minded_proposition,
-            primary_audience:
-              (Array.isArray(nextBrief.audiences) && nextBrief.audiences.join(', ')) ||
-              (nextBrief as any).primary_audience ||
-              prev.primary_audience,
-          }));
-        }
+        setBriefQualityScore(null);
+        setBriefQualityGaps([]);
+        // We keep state as-is; proxy returns echo of current_state for now.
       } else {
         const res = await fetch(`${API_BASE_URL}/chat`, {
           method: 'POST',

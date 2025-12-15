@@ -1,0 +1,11 @@
+runtime: python312
+entrypoint: gunicorn -w 2 -k uvicorn.workers.UvicornWorker app.main:app
+
+env_variables:
+  GOOGLE_API_KEY: your_key_here
+  GEMINI_MODEL: models/gemini-2.5-pro
+
+automatic_scaling:
+  target_cpu_utilization: 0.65
+  max_instances: 3
+  min_instances: 0
