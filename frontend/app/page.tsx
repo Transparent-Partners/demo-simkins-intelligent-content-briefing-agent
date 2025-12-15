@@ -3,10 +3,31 @@ import { useState, useRef, useEffect, useMemo, Fragment } from 'react';
 import * as XLSX from 'xlsx';
 import Image from 'next/image';
 
-// Default to same-origin in the browser; fall back to localhost for local dev/server-side
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  (typeof window === 'undefined' ? 'http://localhost:8000' : '');
+// API base selection:
+// - In production on Vercel, we generally want SAME-ORIGIN so `vercel.json` routes can forward /brief/* etc.
+// - In local dev, we want http://127.0.0.1:8000 (or whatever NEXT_PUBLIC_API_BASE_URL points to).
+// - Guard against a misconfigured production env var accidentally set to localhost.
+const API_BASE_URL = (() => {
+  const envBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const isBrowser = typeof window !== 'undefined';
+
+  if (isBrowser) {
+    const host = window.location.hostname;
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
+
+    if (!envBase) return '';
+
+    const envLooksLocal = /localhost|127\.0\.0\.1/i.test(envBase);
+    if (envLooksLocal && !isLocalHost) {
+      // Production (or any non-local host) should not try to call a localhost API.
+      return '';
+    }
+    return envBase;
+  }
+
+  // Server-side render fallback for local tooling
+  return envBase ?? 'http://localhost:8000';
+})();
 
 type Message = {
   role: 'user' | 'assistant';
