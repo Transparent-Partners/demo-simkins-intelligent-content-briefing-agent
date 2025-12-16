@@ -72,6 +72,19 @@ class GenerateAssetResponse(BaseModel):
     status: str
     # Placeholder for future URLs or IDs returned from GCP creative services.
     asset_url: Optional[str] = None
+    job_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+class CheckVideoJobRequest(BaseModel):
+    job_id: str
+
+
+class CheckVideoJobResponse(BaseModel):
+    status: str
+    asset_url: Optional[str] = None
+    job_id: str
+    error: Optional[str] = None
 
 
 class GenerateFeedRequest(BaseModel):
@@ -98,26 +111,61 @@ async def chat_endpoint(request: ChatRequest):
 @app.post("/generate-asset", response_model=GenerateAssetResponse)
 async def generate_asset(request: GenerateAssetRequest):
     """
-    Turn a concept canvas entry into a concrete prompt for downstream
-    image / video generation.
-
-    This is intentionally a thin stub so we can wire the UI and payload shape
-    without yet depending on specific GCP client libraries.
-
-    To connect this to Google Cloud creative AI in a later step you would:
-      - Enable Vertex AI in your GCP project.
-      - Use the appropriate Python client (e.g., for Imagen or Veo) with
-        service account credentials.
-      - Call the model with `request.prompt` (and `request.kind`) and return
-        the resulting image / video URL in `asset_url`.
+    Generate images or videos using Google Cloud Vertex AI (Imagen for images, Veo for videos).
+    
+    This endpoint connects to Vertex AI to generate creative assets based on prompts
+    from the concept canvas.
     """
     try:
-        # For now just echo the prompt back with a stubbed status.
-        return GenerateAssetResponse(
-            kind=request.kind,
-            prompt=request.prompt,
-            status="queued",
-            asset_url=None,
+        from app.services.asset_generator import generate_image, generate_video
+        
+        if request.kind == "image":
+            result = generate_image(prompt=request.prompt)
+            return GenerateAssetResponse(
+                kind=request.kind,
+                prompt=request.prompt,
+                status=result.get("status", "error"),
+                asset_url=result.get("asset_url"),
+            )
+        elif request.kind == "video":
+            result = generate_video(prompt=request.prompt)
+            return GenerateAssetResponse(
+                kind=request.kind,
+                prompt=request.prompt,
+                status=result.get("status", "error"),
+                asset_url=result.get("asset_url"),
+                job_id=result.get("job_id"),
+                error=result.get("error"),
+            )
+        else:
+            # For "copy" or other types, return as-is (no generation needed)
+            return GenerateAssetResponse(
+                kind=request.kind,
+                prompt=request.prompt,
+                status="completed",
+                asset_url=None,
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/check-video-job", response_model=CheckVideoJobResponse)
+async def check_video_job(request: CheckVideoJobRequest):
+    """
+    Check the status of a video generation job.
+    
+    Video generation is asynchronous and may take several minutes.
+    Use this endpoint to poll for completion.
+    """
+    try:
+        from app.services.asset_generator import check_video_job_status
+        
+        result = check_video_job_status(request.job_id)
+        return CheckVideoJobResponse(
+            status=result.get("status", "error"),
+            asset_url=result.get("asset_url"),
+            job_id=request.job_id,
+            error=result.get("error"),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

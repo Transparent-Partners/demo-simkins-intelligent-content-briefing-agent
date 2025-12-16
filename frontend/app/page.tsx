@@ -736,11 +736,13 @@ type Concept = {
   description: string;
   notes: string;
   kind?: 'image' | 'video' | 'copy';
-  status?: 'idle' | 'generating' | 'ready' | 'error';
+  status?: 'idle' | 'generating' | 'ready' | 'completed' | 'error';
   generatedPrompt?: string;
   file_url?: string;
   file_name?: string;
   file_type?: string;
+  generatedAssetUrl?: string; // URL or base64 data URL for generated image/video
+  generationJobId?: string; // For video generation polling
 };
 
 // --- Sample Data ---
@@ -2086,6 +2088,96 @@ export default function Home() {
 
   function removeConcept(index: number) {
     setConcepts((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function generateAssetForConcept(conceptIndex: number) {
+    const concept = concepts[conceptIndex];
+    if (!concept || !concept.kind || concept.kind === 'copy') {
+      return; // Only generate for image/video
+    }
+
+    // Update status to generating
+    setConcepts((prev) =>
+      prev.map((c, i) =>
+        i === conceptIndex
+          ? {
+              ...c,
+              status: 'generating',
+            }
+          : c,
+      ),
+    );
+
+    try {
+      // Use generatedPrompt if available, otherwise build from concept fields
+      const prompt =
+        concept.generatedPrompt ||
+        `${concept.title || 'Concept'}: ${concept.description || ''}${concept.notes ? ` Notes: ${concept.notes}` : ''}`;
+
+      const response = await fetch(`${API_BASE_URL}/generate-asset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: concept.kind,
+          prompt: prompt.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Generation failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.status === 'error') {
+        throw new Error(data.error || 'Generation failed');
+      }
+
+      // Update concept with generated asset
+      setConcepts((prev) =>
+        prev.map((c, i) =>
+          i === conceptIndex
+            ? {
+                ...c,
+                status: data.status === 'completed' ? 'completed' : 'ready',
+                generatedAssetUrl: data.asset_url || null,
+                generationJobId: data.job_id || null,
+              }
+            : c,
+        ),
+      );
+
+      // If video is queued, add to mood board automatically and start polling
+      if (data.status === 'queued' && data.job_id && concept.kind === 'video') {
+        setMoodBoardConceptIds((prev) => {
+          if (!prev.includes(concept.id)) {
+            return [...prev, concept.id];
+          }
+          return prev;
+        });
+        // Note: Video polling can be added later if needed
+      } else if (data.status === 'completed' && data.asset_url) {
+        // Auto-add completed images to mood board
+        setMoodBoardConceptIds((prev) => {
+          if (!prev.includes(concept.id)) {
+            return [...prev, concept.id];
+          }
+          return prev;
+        });
+      }
+    } catch (error: any) {
+      setConcepts((prev) =>
+        prev.map((c, i) =>
+          i === conceptIndex
+            ? {
+                ...c,
+                status: 'error',
+              }
+            : c,
+        ),
+      );
+      console.error('Error generating asset:', error);
+    }
   }
 
   async function draftConceptsFromBrief() {
@@ -3604,7 +3696,7 @@ export default function Home() {
       className="flex flex-col h-screen bg-[#F8FAFC] overflow-hidden font-sans text-slate-800"
     >
       {/* Global header - shows across all workspace views */}
-      <div className="px-8 py-6 border-b border-gray-200 bg-white flex justify-between items-center shadow-sm z-10">
+      <div className="px-8 py-6 border-b border-gray-200 bg-white flex justify-between items-center shadow-sm z-50 relative">
         <div className="flex items-center gap-6">
           <div className="h-12 w-auto">
             {/* Increased logo size and removed fixed width container constraint */}
@@ -3641,8 +3733,9 @@ export default function Home() {
           )}
           <div className="hidden md:flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-1 py-0.5">
             <button
+              type="button"
               onClick={() => switchWorkspace('brief')}
-              className={`text-[11px] px-2 py-1 rounded-full ${
+              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
                 workspaceView === 'brief'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
@@ -3651,8 +3744,9 @@ export default function Home() {
               Brief
             </button>
             <button
+              type="button"
               onClick={() => switchWorkspace('matrix')}
-              className={`text-[11px] px-2 py-1 rounded-full ${
+              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
                 workspaceView === 'matrix'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
@@ -3661,8 +3755,9 @@ export default function Home() {
               Audiences
             </button>
             <button
+              type="button"
               onClick={() => switchWorkspace('concepts')}
-              className={`text-[11px] px-2 py-1 rounded-full ${
+              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
                 workspaceView === 'concepts'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
@@ -3671,8 +3766,9 @@ export default function Home() {
               Concepts
             </button>
             <button
+              type="button"
               onClick={() => switchWorkspace('production')}
-              className={`text-[11px] px-2 py-1 rounded-full ${
+              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
                 workspaceView === 'production'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
@@ -3681,8 +3777,9 @@ export default function Home() {
               Production
             </button>
             <button
+              type="button"
               onClick={() => switchWorkspace('feed')}
-              className={`text-[11px] px-2 py-1 rounded-full ${
+              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
                 workspaceView === 'feed'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
@@ -6223,9 +6320,29 @@ export default function Home() {
                                       c.kind === 'video' ? 'video' : c.kind === 'copy' ? 'copy' : 'image'
                                     } prompt`}
                                   </button>
+                                  {c.generatedPrompt && (
+                                    <button
+                                      type="button"
+                                      onClick={() => generateAssetForConcept(index)}
+                                      disabled={c.status === 'generating'}
+                                      className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-teal-500 bg-white text-teal-600 hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      {c.status === 'generating'
+                                        ? 'Generating...'
+                                        : c.status === 'completed'
+                                          ? 'Regenerate'
+                                          : `Generate ${c.kind === 'video' ? 'video' : 'image'}`}
+                                    </button>
+                                  )}
                                   <div className="flex items-center gap-2">
                                     {c.status === 'ready' && (
-                                      <span className="text-[11px] text-emerald-600">Prompt ready for production</span>
+                                      <span className="text-[11px] text-emerald-600">Prompt ready</span>
+                                    )}
+                                    {c.status === 'generating' && (
+                                      <span className="text-[11px] text-blue-600">Generating...</span>
+                                    )}
+                                    {c.status === 'completed' && (
+                                      <span className="text-[11px] text-emerald-600">✓ Generated</span>
                                     )}
                                     {c.status === 'error' && (
                                       <span className="text-[11px] text-red-500">Generation failed</span>
@@ -6248,10 +6365,33 @@ export default function Home() {
                                   </div>
                                 </div>
                                 <div className="border border-slate-100 rounded-lg bg-slate-50/60 px-2.5 py-2 min-h-[72px]">
-                                  <p className="text-[11px] text-slate-600 whitespace-pre-wrap">
-                                    {c.generatedPrompt ||
-                                      'No AI output yet. Use "Generate prompt" to create an AI-ready description.'}
-                                  </p>
+                                  {c.generatedAssetUrl && (c.kind === 'image' || c.kind === 'video') ? (
+                                    <div className="space-y-2">
+                                      {c.kind === 'image' ? (
+                                        <img
+                                          src={c.generatedAssetUrl}
+                                          alt={c.title || 'Generated image'}
+                                          className="w-full rounded-lg border border-slate-200 max-h-48 object-contain bg-white"
+                                        />
+                                      ) : (
+                                        <video
+                                          src={c.generatedAssetUrl}
+                                          controls
+                                          className="w-full rounded-lg border border-slate-200 max-h-48 bg-black"
+                                        >
+                                          Your browser does not support the video tag.
+                                        </video>
+                                      )}
+                                      <p className="text-[10px] text-slate-500">
+                                        Generated {c.kind} - {c.status === 'completed' ? 'Ready' : 'Processing...'}
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <p className="text-[11px] text-slate-600 whitespace-pre-wrap">
+                                      {c.generatedPrompt ||
+                                        'No AI output yet. Use "Generate prompt" to create an AI-ready description, then click "Generate image/video" to create the asset.'}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -6348,6 +6488,25 @@ export default function Home() {
                                   onClick={() => setConceptDetail(c)}
                                   className="relative bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-2 cursor-pointer hover:shadow-md transition-shadow"
                                 >
+                                  {c.generatedAssetUrl && (c.kind === 'image' || c.kind === 'video') && (
+                                    <div className="w-full rounded-lg border border-slate-200 overflow-hidden mb-2">
+                                      {c.kind === 'image' ? (
+                                        <img
+                                          src={c.generatedAssetUrl}
+                                          alt={c.title || 'Generated image'}
+                                          className="w-full h-32 object-cover bg-white"
+                                        />
+                                      ) : (
+                                        <video
+                                          src={c.generatedAssetUrl}
+                                          className="w-full h-32 object-cover bg-black"
+                                          controls
+                                        >
+                                          Your browser does not support the video tag.
+                                        </video>
+                                      )}
+                                    </div>
+                                  )}
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="min-w-0">
                                       <p className="text-xs font-semibold text-slate-900 truncate">
