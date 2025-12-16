@@ -76,7 +76,7 @@ def compute_quality_and_gaps(brief: Dict[str, Any]) -> Tuple[float, List[str]]:
     else:
         gaps.append("Campaign Name")
 
-    if smp and len(smp) >= 12:
+    if smp and len(smp) >= 8:
         score += 3.0
     else:
         gaps.append("Single Minded Proposition")
@@ -94,7 +94,7 @@ def compute_quality_and_gaps(brief: Dict[str, Any]) -> Tuple[float, List[str]]:
     if isinstance(flight, dict) and flight.get("start") and flight.get("end"):
         score += 1.0
 
-    if narrative and len(narrative) >= 40:
+    if narrative and len(narrative) >= 30:
         score += 0.5
 
     # Cap score to 10

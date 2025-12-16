@@ -1778,10 +1778,8 @@ export default function Home() {
           return acc;
         }, { ...briefState } as Record<string, any>);
 
-        // In production on Vercel, prefer same-origin live API (Next route handler): POST /brief/chat
-        // In local dev, if NEXT_PUBLIC_API_BASE_URL is set, use it.
-        const briefChatUrl = API_BASE_URL ? `${API_BASE_URL}/brief/chat` : '/brief/chat';
-        const res = await fetch(briefChatUrl, {
+        // Use the Next.js serverless proxy to keep the Gemini key server-side.
+        const res = await fetch('/api/brief', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
@@ -2861,7 +2859,7 @@ export default function Home() {
     if (name) score += 2.0;
     else gaps.push('Campaign Name');
 
-    if (smp && smp.length >= 12) score += 3.0;
+    if (smp && smp.length >= 8) score += 3.0;
     else gaps.push('Single Minded Proposition');
 
     if (audiences.length > 0 || primaryAudience) score += 2.0;
@@ -3740,7 +3738,7 @@ export default function Home() {
                 msg.role === 'user' 
                   ? 'bg-teal-600 text-white rounded-br-sm' 
                   : 'bg-white border border-gray-100 text-slate-700 rounded-bl-sm'
-              }`}>
+              } whitespace-pre-wrap break-words`}>
                 {msg.content}
               </div>
             </div>
