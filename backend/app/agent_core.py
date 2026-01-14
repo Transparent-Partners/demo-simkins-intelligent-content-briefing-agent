@@ -9,10 +9,12 @@ from dotenv import load_dotenv
 
 # Load environment from backend/.env (local dev). In Vercel, env vars come from Project Settings.
 ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=ENV_PATH, override=False)
+load_dotenv(dotenv_path=ENV_PATH, override=True)  # override=True ensures .env values take precedence
 
+_OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 _GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 _MODEL_NAME = os.getenv("GEMINI_MODEL", "models/gemini-2.5-pro")
+_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 
 SYSTEM_PROMPT = """You are an expert Content Strategy Architect and world-class ModCon briefing SME.
@@ -61,7 +63,7 @@ def _gemini_generate(system_prompt: str, chat_log: List[dict]) -> str:
 
     if not _GOOGLE_API_KEY:
         return (
-            "I can't reach Gemini because the API key isn't loaded. Please set GOOGLE_API_KEY and redeploy. "
+            "I can't reach Gemini because the API key isn't loaded. Please set GOOGLE_API_KEY (or OPENAI_API_KEY) and redeploy. "
             "Share campaign name, SMP, audiences, KPIs, flight dates, mandatories, tone/voice, offers, proof points, "
             "and specs/asset libraries, and I'll draft the brief once connected."
         )
@@ -107,7 +109,73 @@ def _gemini_generate(system_prompt: str, chat_log: List[dict]) -> str:
         return raw or "No reply generated."
 
 
+def _openai_generate(system_prompt: str, chat_log: List[dict]) -> str:
+    """
+    Generate response using OpenAI API.
+    """
+    if not _OPENAI_API_KEY:
+        return (
+            "I can't reach OpenAI because the API key isn't loaded. Please set OPENAI_API_KEY and redeploy. "
+            "Share campaign name, SMP, audiences, KPIs, flight dates, mandatories, tone/voice, offers, proof points, "
+            "and specs/asset libraries, and I'll draft the brief once connected."
+        )
+    
+    import urllib.request
+    import urllib.error
+    
+    messages = [{"role": "system", "content": system_prompt.strip()}]
+    for m in (chat_log or []):
+        if m and m.get("role") in ("user", "assistant"):
+            messages.append({
+                "role": m.get("role"),
+                "content": str(m.get("content", "") or "")
+            })
+    
+    payload = {
+        "model": _OPENAI_MODEL,
+        "messages": messages,
+        "temperature": 0.7,
+    }
+    
+    url = "https://api.openai.com/v1/chat/completions"
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url, 
+        data=data, 
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {_OPENAI_API_KEY}"
+        }, 
+        method="POST"
+    )
+    
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8", errors="ignore")
+    except urllib.error.HTTPError as e:
+        err_body = ""
+        try:
+            err_body = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            pass
+        raise RuntimeError(f"OpenAI API error {e.code}: {err_body or e.reason}") from e
+    except Exception as e:
+        raise RuntimeError(f"OpenAI request failed: {e}") from e
+    
+    try:
+        parsed = json.loads(raw)
+        text = parsed.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        return text or "No reply generated."
+    except Exception:
+        return raw or "No reply generated."
+
+
 async def process_message(history: List[dict], current_plan: dict) -> str:
     current_plan_str = json.dumps(current_plan or {}, indent=2)
     system_prompt = SYSTEM_PROMPT.format(current_plan=current_plan_str)
-    return _gemini_generate(system_prompt=system_prompt, chat_log=history or [])
+    
+    # Prefer OpenAI if available, otherwise use Gemini
+    if _OPENAI_API_KEY:
+        return _openai_generate(system_prompt=system_prompt, chat_log=history or [])
+    else:
+        return _gemini_generate(system_prompt=system_prompt, chat_log=history or [])

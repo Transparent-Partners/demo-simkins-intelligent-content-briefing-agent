@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Response
+from fastapi import FastAPI, HTTPException, UploadFile, File, Response, Form
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional, Literal
 from app.agent_core import process_message
@@ -62,6 +62,10 @@ class ExportRequest(BaseModel):
 class GenerateAssetRequest(BaseModel):
     kind: Literal["image", "video", "copy"]
     prompt: str
+    # Optional: base64 encoded image for image-to-image or vision analysis
+    image_data: Optional[str] = None
+    image_mime_type: Optional[str] = None
+    use_gemini: Optional[bool] = False  # If True, use Gemini vision; if False, use Imagen image-to-image
     # In a future iteration we could also accept campaign / brand context here
     # and use it to condition the image / video generation call.
 
@@ -74,6 +78,8 @@ class GenerateAssetResponse(BaseModel):
     asset_url: Optional[str] = None
     job_id: Optional[str] = None
     error: Optional[str] = None
+    # For Gemini vision responses (text analysis of images)
+    response: Optional[str] = None
 
 
 class CheckVideoJobRequest(BaseModel):
@@ -113,20 +119,68 @@ async def generate_asset(request: GenerateAssetRequest):
     """
     Generate images or videos using Google Cloud Vertex AI (Imagen for images, Veo for videos).
     
+    Supports:
+    - Text-to-image: Standard image generation from text prompt
+    - Image-to-image: Generate new image based on input image + prompt (Imagen)
+    - Image analysis: Analyze/describe image using Gemini vision
+    
     This endpoint connects to Vertex AI to generate creative assets based on prompts
     from the concept canvas.
     """
     try:
-        from app.services.asset_generator import generate_image, generate_video
+        import base64
+        from app.services.asset_generator import (
+            generate_image, 
+            generate_video,
+            prompt_image_with_gemini,
+            generate_image_from_image
+        )
         
         if request.kind == "image":
-            result = generate_image(prompt=request.prompt)
-            return GenerateAssetResponse(
-                kind=request.kind,
-                prompt=request.prompt,
-                status=result.get("status", "error"),
-                asset_url=result.get("asset_url"),
-            )
+            # Check if image data is provided
+            if request.image_data:
+                image_bytes = base64.b64decode(request.image_data)
+                mime_type = request.image_mime_type or "image/jpeg"
+                
+                if request.use_gemini:
+                    # Use Gemini for vision analysis
+                    result = prompt_image_with_gemini(
+                        image_data=image_bytes,
+                        prompt=request.prompt,
+                        mime_type=mime_type
+                    )
+                    # For Gemini, return the text response (could be used to enhance prompts)
+                    return GenerateAssetResponse(
+                        kind=request.kind,
+                        prompt=request.prompt,
+                        status=result.get("status", "error"),
+                        asset_url=None,  # Gemini returns text, not image
+                        error=result.get("error"),
+                    )
+                else:
+                    # Use Imagen for image-to-image generation
+                    result = generate_image_from_image(
+                        image_data=image_bytes,
+                        prompt=request.prompt,
+                        mime_type=mime_type
+                    )
+                    return GenerateAssetResponse(
+                        kind=request.kind,
+                        prompt=request.prompt,
+                        status=result.get("status", "error"),
+                        asset_url=result.get("asset_url"),
+                        error=result.get("error"),
+                    )
+            else:
+                # Standard text-to-image generation
+                result = generate_image(prompt=request.prompt)
+                return GenerateAssetResponse(
+                    kind=request.kind,
+                    prompt=request.prompt,
+                    status=result.get("status", "error"),
+                    asset_url=result.get("asset_url"),
+                    error=result.get("error"),
+                )
         elif request.kind == "video":
             result = generate_video(prompt=request.prompt)
             return GenerateAssetResponse(
@@ -191,6 +245,59 @@ async def generate_feed(request: GenerateFeedRequest) -> GenerateFeedResponse:
         return GenerateFeedResponse(feed=feed_rows)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/prompt-image")
+async def prompt_image_endpoint(
+    file: UploadFile = File(...),
+    prompt: str = Form(""),
+    use_gemini: bool = Form(False)
+):
+    """
+    Upload an image and prompt it with either Gemini (vision analysis) or Imagen (image-to-image).
+    
+    - use_gemini=True: Analyze/describe image using Gemini vision
+    - use_gemini=False: Generate new image based on input using Imagen
+    """
+    try:
+        import base64
+        from app.services.asset_generator import (
+            prompt_image_with_gemini,
+            generate_image_from_image
+        )
+        
+        # Read image file
+        image_bytes = await file.read()
+        mime_type = file.content_type or "image/jpeg"
+        
+        if use_gemini:
+            # Use Gemini for vision analysis
+            result = prompt_image_with_gemini(
+                image_data=image_bytes,
+                prompt=prompt or "Describe this image in detail.",
+                mime_type=mime_type
+            )
+            return {
+                "status": result.get("status", "error"),
+                "response": result.get("response"),
+                "prompt": prompt,
+                "error": result.get("error"),
+            }
+        else:
+            # Use Imagen for image-to-image generation
+            result = generate_image_from_image(
+                image_data=image_bytes,
+                prompt=prompt or "Enhance this image",
+                mime_type=mime_type
+            )
+            return {
+                "status": result.get("status", "error"),
+                "asset_url": result.get("asset_url"),
+                "prompt": prompt,
+                "error": result.get("error"),
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):

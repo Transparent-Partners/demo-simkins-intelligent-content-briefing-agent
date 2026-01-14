@@ -15,6 +15,11 @@ const API_BASE_URL = (() => {
     const host = window.location.hostname;
     const isLocalHost = host === 'localhost' || host === '127.0.0.1';
 
+    // If no env var is set and we're on localhost, default to local backend
+    if (!envBase && isLocalHost) {
+      return 'http://localhost:8000';
+    }
+
     if (!envBase) return '';
 
     const envLooksLocal = /localhost|127\.0\.0\.1/i.test(envBase);
@@ -743,6 +748,9 @@ type Concept = {
   file_type?: string;
   generatedAssetUrl?: string; // URL or base64 data URL for generated image/video
   generationJobId?: string; // For video generation polling
+  audienceLineIds?: string[]; // Array of audience matrix row IDs associated with this concept
+  selectedFields?: Array<{ lineId: string; fieldKey: string; fieldLabel: string; fieldValue: string }>; // Selected fields from audience lines
+  errorMessage?: string; // Error message if generation failed
 };
 
 // --- Sample Data ---
@@ -1294,13 +1302,24 @@ export default function Home() {
 
   // This would eventually be live-updated from the backend
   const [previewPlan, setPreviewPlan] = useState<any>({
+    workflow_job_tool: '',
+    job_code: '',
     campaign_name: '',
     single_minded_proposition: '',
     primary_audience: '',
     narrative_brief: '',
     content_matrix: [],
   }); 
-  const [matrixRows, setMatrixRows] = useState<MatrixRow[]>(INITIAL_STRATEGY_MATRIX_RUNNING_SHOES);
+  // Ensure all matrix rows have an 'id' field for proper tracking
+  const [matrixRows, setMatrixRows] = useState<MatrixRow[]>(() => {
+    return INITIAL_STRATEGY_MATRIX_RUNNING_SHOES.map((row, index) => {
+      // If row doesn't have an id, generate one based on index
+      if (!row.id) {
+        return { ...row, id: `ROW-${(index + 1).toString().padStart(3, '0')}` };
+      }
+      return row;
+    });
+  });
   const productionMatrixAudienceOptions = useMemo(
     () => Array.from(new Set(matrixRows.map((r) => r.segment_name).filter(Boolean))),
     [matrixRows],
@@ -1378,6 +1397,7 @@ export default function Home() {
     },
   ]);
   const [moodBoardConceptIds, setMoodBoardConceptIds] = useState<string[]>([]);
+  const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
   const [brandAssets, setBrandAssets] = useState<string[]>([]);
   const [brandVoiceGuide, setBrandVoiceGuide] = useState('');
   const [brandStyleGuide, setBrandStyleGuide] = useState('');
@@ -1387,6 +1407,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const conceptFileInputRef = useRef<HTMLInputElement | null>(null);
   const conceptMediaInputRef = useRef<HTMLInputElement | null>(null);
+  const conceptVideoUploadRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const brandAssetFileInputRef = useRef<HTMLInputElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -1964,6 +1985,16 @@ export default function Home() {
     // In demo mode, generate a simple text export client-side for TXT/PDF
     if (demoMode) {
       const lines: string[] = [];
+      // Workflow Job Tool and Job Code at the top
+      if (planToSend.workflow_job_tool || planToSend.job_code) {
+        if (planToSend.workflow_job_tool) {
+          lines.push(`Workflow Job Tool: ${planToSend.workflow_job_tool}`);
+        }
+        if (planToSend.job_code) {
+          lines.push(`Job Code: ${planToSend.job_code}`);
+        }
+        lines.push('');
+      }
       lines.push(`Production Master Plan: ${planToSend.campaign_name ?? 'Untitled'}`);
       lines.push('==================================================');
       lines.push('');
@@ -2076,6 +2107,8 @@ export default function Home() {
         // kind can be set later via the toggle controls in the Concept Canvas
         kind: undefined,
         status: 'idle',
+        audienceLineIds: [],
+        selectedFields: [],
       },
     ]);
   }
@@ -2109,10 +2142,52 @@ export default function Home() {
     );
 
     try {
-      // Use generatedPrompt if available, otherwise build from concept fields
-      const prompt =
-        concept.generatedPrompt ||
-        `${concept.title || 'Concept'}: ${concept.description || ''}${concept.notes ? ` Notes: ${concept.notes}` : ''}`;
+      // Build prompt from concept fields if not provided
+      let prompt = concept.generatedPrompt;
+      
+      if (!prompt || prompt.trim() === '') {
+        // Build comprehensive prompt from concept description
+        const parts: string[] = [];
+        if (concept.title) parts.push(`Concept: ${concept.title}`);
+        if (concept.description) parts.push(concept.description);
+        
+        // Add selected audience fields to inform the prompt
+        if (concept.selectedFields && concept.selectedFields.length > 0) {
+          const fieldParts: string[] = [];
+          concept.selectedFields.forEach((field) => {
+            fieldParts.push(`${field.fieldLabel}: ${field.fieldValue}`);
+          });
+          if (fieldParts.length > 0) {
+            parts.push(`Audience Context:\n${fieldParts.join('\n')}`);
+          }
+        }
+        
+        if (concept.notes) parts.push(`Production notes: ${concept.notes}`);
+        
+        // Add context from brief if available
+        const plan: any = previewPlan || {};
+        if (plan.campaign_name) parts.unshift(`Campaign: ${plan.campaign_name}`);
+        if (plan.single_minded_proposition) parts.unshift(`SMP: ${plan.single_minded_proposition}`);
+        if (plan.primary_audience) parts.unshift(`Audience: ${plan.primary_audience}`);
+        
+        prompt = parts.join('\n\n');
+      } else {
+        // Even if prompt is provided, include selected fields for context
+        if (concept.selectedFields && concept.selectedFields.length > 0) {
+          const fieldParts: string[] = [];
+          concept.selectedFields.forEach((field) => {
+            fieldParts.push(`${field.fieldLabel}: ${field.fieldValue}`);
+          });
+          if (fieldParts.length > 0) {
+            prompt = `${prompt}\n\nAudience Context:\n${fieldParts.join('\n')}`;
+          }
+        }
+      }
+      
+      // Enhance prompt for better image generation
+      if (concept.kind === 'image' && !prompt.toLowerCase().includes('high quality') && !prompt.toLowerCase().includes('professional')) {
+        prompt = `${prompt.trim()}, high quality, professional photography, detailed, sharp focus`;
+      }
 
       const response = await fetch(`${API_BASE_URL}/generate-asset`, {
         method: 'POST',
@@ -2130,7 +2205,15 @@ export default function Home() {
       const data = await response.json();
 
       if (data.status === 'error') {
-        throw new Error(data.error || 'Generation failed');
+        const errorMsg = data.error || 'Generation failed';
+        // For video generation, provide more helpful error message
+        if (concept.kind === 'video' && (errorMsg.includes('Service account') || errorMsg.includes('GOOGLE_APPLICATION_CREDENTIALS'))) {
+          throw new Error('Video generation requires service account authentication. Please configure GOOGLE_APPLICATION_CREDENTIALS in your backend environment. See backend logs for details.');
+        } else if (concept.kind === 'video' && (errorMsg.includes('Veo') || errorMsg.includes('not available'))) {
+          throw new Error('Veo video generation is not available. Veo requires special access from Google Cloud. Contact your administrator to enable Veo access.');
+        } else {
+          throw new Error(errorMsg);
+        }
       }
 
       // Update concept with generated asset
@@ -2166,17 +2249,21 @@ export default function Home() {
         });
       }
     } catch (error: any) {
+      const errorMessage = error?.message || error?.toString() || 'Generation failed. Please try again.';
       setConcepts((prev) =>
         prev.map((c, i) =>
           i === conceptIndex
             ? {
                 ...c,
                 status: 'error',
+                errorMessage: errorMessage, // Store error message for display
               }
             : c,
         ),
       );
       console.error('Error generating asset:', error);
+      // Show error alert to user
+      alert(`Failed to generate ${concept.kind}: ${errorMessage}`);
     }
   }
 
@@ -3691,6 +3778,7 @@ export default function Home() {
   }
 
   return (
+    <>
     <main
       ref={containerRef}
       className="flex flex-col h-screen bg-[#F8FAFC] overflow-hidden font-sans text-slate-800"
@@ -4084,6 +4172,49 @@ export default function Home() {
             </div>
           </div>
           <div className="flex-1 p-6 overflow-y-auto bg-slate-50/40 space-y-4">
+            {/* Administrative Section - Workflow & Job Tracking */}
+            <div className="rounded-lg bg-slate-50 border border-slate-200 p-3.5 shadow-sm">
+              <div className="flex items-center gap-2 mb-2.5">
+                <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Project Administration</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-slate-600">
+                    Workflow Tool
+                  </label>
+                  <select
+                    className="w-full border border-slate-200 rounded-md px-2 py-1.5 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 bg-white"
+                    value={(previewPlan && (previewPlan as any).workflow_job_tool) ?? ''}
+                    onChange={(e) => updateBriefFieldValue('workflow_job_tool', e.target.value)}
+                  >
+                    <option value="">Select tool...</option>
+                    <option value="jira">Jira</option>
+                    <option value="workfront">Workfront</option>
+                    <option value="encodify">Encodify</option>
+                    <option value="screendragon">Screendragon</option>
+                    <option value="asana">Asana</option>
+                    <option value="monday">Monday.com</option>
+                    <option value="trello">Trello</option>
+                    <option value="clickup">ClickUp</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-slate-600">
+                    Job Code
+                  </label>
+                  <input
+                    className="w-full border border-slate-200 rounded-md px-2 py-1.5 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 bg-white"
+                    value={(previewPlan && (previewPlan as any).job_code) ?? ''}
+                    onChange={(e) => updateBriefFieldValue('job_code', e.target.value)}
+                    placeholder="e.g., PROJ-2024-001"
+                  />
+                </div>
+              </div>
+            </div>
             <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Brief Fields</h3>
@@ -4486,6 +4617,7 @@ export default function Home() {
                           <table className="w-full text-xs text-left">
                             <thead className="bg-slate-50 text-slate-500">
                               <tr>
+                                <th className="px-2 py-2 w-16 text-center font-semibold">Line</th>
                                 <th className="px-2 py-2 w-8 text-center"></th>
                                 {matrixFields.filter((f) => visibleMatrixFields.includes(f.key)).map((field) => (
                                   <th key={field.key} className="px-2 py-2">
@@ -4499,6 +4631,11 @@ export default function Home() {
                               {matrixRows.map((row, index) => (
                                 <Fragment key={index}>
                                   <tr className="align-top hover:bg-slate-50/70">
+                                    <td className="px-2 py-1 text-center">
+                                      <span className="text-xs font-mono font-semibold text-slate-700">
+                                        {(index + 1).toString().padStart(3, '0')}
+                                      </span>
+                                    </td>
                                     <td className="px-2 py-1 text-center">
                                       <button
                                         type="button"
@@ -4530,7 +4667,7 @@ export default function Home() {
                                   </tr>
                                   {expandedMatrixRows[index] && (
                                     <tr className="bg-slate-50/70">
-                                      <td colSpan={visibleMatrixFields.length + 2} className="px-3 py-3">
+                                      <td colSpan={visibleMatrixFields.length + 3} className="px-3 py-3">
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-slate-700">
                                           {matrixFields
                                             .filter((f) => visibleMatrixFields.includes(f.key))
@@ -6194,206 +6331,724 @@ export default function Home() {
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                       {concepts.map((c, index) => {
                         const isOnMoodBoard = moodBoardConceptIds.includes(c.id);
                         return (
                           <div
                             key={c.id}
-                            className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start"
+                            className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch"
                           >
-                            {/* LEFT: Concept input card */}
-                            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <input
-                                  className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                  placeholder="Concept title (e.g., Night Reset Ritual)"
-                                  value={c.title}
-                                  onChange={(e) => updateConceptField(index, 'title', e.target.value)}
-                                />
-                                <input
-                                  className="w-28 border border-gray-200 rounded px-2 py-1 text-[11px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
-                                  placeholder="Asset ID"
-                                  value={c.asset_id}
-                                  onChange={(e) => updateConceptField(index, 'asset_id', e.target.value)}
-                                />
-                              </div>
-                              <textarea
-                                className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[72px]"
-                                placeholder="Short narrative of the idea, hooks, and how it modularly recombines across channels."
-                                value={c.description}
-                                onChange={(e) => updateConceptField(index, 'description', e.target.value)}
-                              />
-                              <textarea
-                                className="w-full border border-dashed border-gray-200 rounded px-2 py-1 text-[11px] text-slate-500 focus:outline-none focus:ring-1 focus:ring-teal-500/30 focus:border-teal-400 min-h-[48px]"
-                                placeholder="Production notes / visual references (e.g., color language, motion cues, mandatory elements)."
-                                value={c.notes}
-                                onChange={(e) => updateConceptField(index, 'notes', e.target.value)}
-                              />
+                            {/* LEFT COLUMN: Concept Instructions (Asset Type → Audience Line → Fields → Description) */}
+                            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col gap-4 h-full">
                               <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-semibold text-slate-700">
+                                  Concept Instructions
+                                  {c.audienceLineIds && Array.isArray(c.audienceLineIds) && c.audienceLineIds.length > 0 && (
+                                    <span className="ml-2 text-xs text-slate-400 font-normal">
+                                      (Audience: {c.audienceLineIds.map((id) => {
+                                        const lineIndex = matrixRows.findIndex((r) => r.id === id);
+                                        return (lineIndex + 1).toString().padStart(3, '0');
+                                      }).join(', ')})
+                                    </span>
+                                  )}
+                                </h4>
                                 <button
                                   onClick={() => removeConcept(index)}
-                                  className="text-[11px] text-slate-400 hover:text-red-500"
+                                  className="text-xs text-slate-400 hover:text-red-500"
                                 >
                                   Remove
                                 </button>
-                                <span className="text-[10px] text-slate-400">{c.id}</span>
+                              </div>
+                              
+                              {/* 1. Asset Type Selector */}
+                              <div>
+                                <label className="text-xs font-medium text-slate-600 mb-2 block">Asset Type</label>
+                                <div className="inline-flex items-center gap-1 rounded-lg bg-slate-50 border border-slate-200 p-1 w-full">
+                                  {(['image', 'copy', 'video'] as const).map((kind) => (
+                                    <button
+                                      key={kind}
+                                      type="button"
+                                      onClick={() => updateConceptField(index, 'kind', kind)}
+                                      className={`flex-1 px-4 py-2 text-sm rounded-md transition-colors font-medium ${
+                                        (c.kind ?? 'image') === kind
+                                          ? 'bg-white text-slate-900 shadow-sm'
+                                          : 'text-slate-500 hover:text-slate-700'
+                                      }`}
+                                    >
+                                      {kind === 'image' ? 'Image' : kind === 'video' ? 'Video' : 'Copy'}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* 2. Audience Line Selection */}
+                              <div className="border-t border-gray-100 pt-4">
+                                <label className="text-xs font-medium text-slate-600 mb-2 block">Select Audience Line</label>
+                                  <select
+                                    className="w-full border border-gray-200 rounded px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    defaultValue=""
+                                    onChange={(e) => {
+                                      const selectedId = e.target.value;
+                                      console.log('🎯 Audience line selected:', selectedId);
+                                      if (selectedId) {
+                                        const matrixRow = matrixRows.find((r) => r.id === selectedId);
+                                        if (matrixRow) {
+                                          // Track the audience line ID
+                                          setConcepts((prev) => {
+                                            const currentConcept = prev[index];
+                                            if (!currentConcept) {
+                                              console.warn('❌ Concept not found at index:', index);
+                                              return prev;
+                                            }
+                                            
+                                            const currentLineIds = currentConcept.audienceLineIds || [];
+                                            if (!currentLineIds.includes(selectedId)) {
+                                              const updatedLineIds = [...currentLineIds, selectedId];
+                                              console.log('✅ Adding audience line:', selectedId, 'to concept:', currentConcept.id, 'Updated IDs:', updatedLineIds);
+                                              
+                                              // Automatically inject segment_source and segment_name fields
+                                              const currentFields = currentConcept.selectedFields || [];
+                                              const newFields: Array<{ lineId: string; fieldKey: string; fieldLabel: string; fieldValue: string }> = [];
+                                              const descriptionParts: string[] = [];
+                                              
+                                              // Add segment_source if it exists and not already added
+                                              if (matrixRow.segment_source) {
+                                                const sourceFieldKey = 'segment_source';
+                                                const sourceFieldExists = currentFields.some(
+                                                  (f) => f.lineId === selectedId && f.fieldKey === sourceFieldKey
+                                                );
+                                                if (!sourceFieldExists) {
+                                                  const sourceFieldLabel = matrixFields.find((f) => f.key === sourceFieldKey)?.label || 'Segment Source';
+                                                  const sourceFieldValue = String(matrixRow.segment_source);
+                                                  newFields.push({
+                                                    lineId: selectedId,
+                                                    fieldKey: sourceFieldKey,
+                                                    fieldLabel: sourceFieldLabel,
+                                                    fieldValue: sourceFieldValue,
+                                                  });
+                                                  descriptionParts.push(`${sourceFieldLabel}: ${sourceFieldValue}`);
+                                                }
+                                              }
+                                              
+                                              // Add segment_name if it exists and not already added
+                                              if (matrixRow.segment_name) {
+                                                const nameFieldKey = 'segment_name';
+                                                const nameFieldExists = currentFields.some(
+                                                  (f) => f.lineId === selectedId && f.fieldKey === nameFieldKey
+                                                );
+                                                if (!nameFieldExists) {
+                                                  const nameFieldLabel = matrixFields.find((f) => f.key === nameFieldKey)?.label || 'Segment Name';
+                                                  const nameFieldValue = String(matrixRow.segment_name);
+                                                  newFields.push({
+                                                    lineId: selectedId,
+                                                    fieldKey: nameFieldKey,
+                                                    fieldLabel: nameFieldLabel,
+                                                    fieldValue: nameFieldValue,
+                                                  });
+                                                  descriptionParts.push(`${nameFieldLabel}: ${nameFieldValue}`);
+                                                }
+                                              }
+                                              
+                                              // Update selectedFields with auto-injected fields
+                                              const updatedFields = [...currentFields, ...newFields];
+                                              
+                                              // Update description with auto-injected fields
+                                              const autoInjectedText = descriptionParts.join('\n');
+                                              const newDescription = currentConcept.description
+                                                ? `${currentConcept.description}\n${autoInjectedText}`
+                                                : autoInjectedText;
+                                              
+                                              return prev.map((concept, i) =>
+                                                i === index
+                                                  ? { 
+                                                      ...concept, 
+                                                      audienceLineIds: updatedLineIds,
+                                                      selectedFields: updatedFields,
+                                                      description: newDescription
+                                                    }
+                                                  : concept
+                                              );
+                                            }
+                                            console.log('⚠️ Audience line already added:', selectedId);
+                                            return prev;
+                                          });
+                                          
+                                          // Reset dropdown
+                                          e.target.value = '';
+                                        } else {
+                                          console.warn('❌ Matrix row not found for ID:', selectedId, 'Available IDs:', matrixRows.map(r => r.id));
+                                        }
+                                      }
+                                    }}
+                                  >
+                                    <option value="">Select audience line...</option>
+                                    {matrixRows.map((row, rowIndex) => {
+                                      // Ensure row has an id - use existing id or generate one
+                                      const rowId = row.id || `ROW-${(rowIndex + 1).toString().padStart(3, '0')}`;
+                                      // If row doesn't have id, add it to the row
+                                      if (!row.id) {
+                                        // Update the row to have an id (this is a one-time fix)
+                                        setTimeout(() => {
+                                          setMatrixRows((prev) =>
+                                            prev.map((r, i) => (i === rowIndex ? { ...r, id: rowId } : r))
+                                          );
+                                        }, 0);
+                                      }
+                                      return (
+                                        <option key={rowId} value={rowId}>
+                                          {(rowIndex + 1).toString().padStart(3, '0')}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                  {/* Show selected audience lines */}
+                                  {c.audienceLineIds && Array.isArray(c.audienceLineIds) && c.audienceLineIds.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                      {c.audienceLineIds.map((lineId) => {
+                                        const lineIndex = matrixRows.findIndex((r) => r.id === lineId);
+                                        return (
+                                          <span
+                                            key={lineId}
+                                            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded"
+                                          >
+                                            {(lineIndex + 1).toString().padStart(3, '0')}
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setConcepts((prev) =>
+                                                  prev.map((concept, i) =>
+                                                    i === index
+                                                      ? { ...concept, audienceLineIds: concept.audienceLineIds?.filter((id) => id !== lineId) || [] }
+                                                      : concept
+                                                  )
+                                                );
+                                              }}
+                                              className="text-blue-500 hover:text-red-500"
+                                            >
+                                              ×
+                                            </button>
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                              </div>
+
+                              {/* 3. Audience Attribute Fields (Field Selection + Display) */}
+                              <div className="border-t border-gray-100 pt-4 space-y-3">
+                                <div>
+                                  <label className="text-xs font-medium text-slate-600 mb-2 block">
+                                    {c.audienceLineIds && Array.isArray(c.audienceLineIds) && c.audienceLineIds.length > 0 
+                                      ? `Add Fields from Selected Audience Line(s) (${c.audienceLineIds.length} line${c.audienceLineIds.length !== 1 ? 's' : ''} selected)`
+                                      : 'Add Fields from Selected Audience Line(s) (select audience line above first)'}
+                                  </label>
+                                  {/* Debug info */}
+                                  {process.env.NODE_ENV === 'development' && (
+                                    <div className="text-[9px] text-slate-400 mb-1 font-mono bg-slate-50 p-1 rounded">
+                                      Debug: audienceLineIds={JSON.stringify(c.audienceLineIds)}, matrixRows={matrixRows.length}, matrixFields={matrixFields.length}
+                                    </div>
+                                  )}
+                                  {matrixRows.length === 0 && (
+                                    <p className="text-xs text-red-500 mb-2">⚠️ No matrix rows available. Please add rows in the Audience module first.</p>
+                                  )}
+                                  {matrixFields.length === 0 && (
+                                    <p className="text-xs text-red-500 mb-2">⚠️ No matrix fields configured.</p>
+                                  )}
+                                  <select
+                                        key={`field-selector-${c.id}-${c.selectedFields?.length || 0}-${c.audienceLineIds?.join(',') || ''}`}
+                                        className="w-full border border-gray-200 rounded px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 bg-white"
+                                        defaultValue=""
+                                        onChange={(e) => {
+                                          const selectedValue = e.target.value;
+                                          if (!selectedValue) return;
+                                          
+                                          const [rowId, fieldKey] = selectedValue.split('|');
+                                          if (!rowId || !fieldKey) return;
+                                          
+                                          const matrixRow = matrixRows.find((r) => r.id === rowId);
+                                          if (!matrixRow || !matrixRow[fieldKey]) return;
+                                          
+                                          const fieldLabel = matrixFields.find((f) => f.key === fieldKey)?.label || fieldKey;
+                                          const fieldValue = matrixRow[fieldKey]?.toString() || '';
+                                          
+                                          // Update state
+                                          setConcepts((prev) => {
+                                            const currentConcept = prev[index];
+                                            if (!currentConcept) return prev;
+                                            
+                                            const currentFields = currentConcept.selectedFields || [];
+                                            
+                                            // Check if field already exists
+                                            const fieldExists = currentFields.some(
+                                              (f) => f.lineId === rowId && f.fieldKey === fieldKey
+                                            );
+                                            
+                                            if (fieldExists) {
+                                              return prev; // Field already added
+                                            }
+                                            
+                                            const newField = {
+                                              lineId: rowId,
+                                              fieldKey: fieldKey,
+                                              fieldLabel: fieldLabel,
+                                              fieldValue: fieldValue,
+                                            };
+                                            
+                                            // Add to selectedFields
+                                            const updatedFields = [...currentFields, newField];
+                                            
+                                            // Also add to description for context
+                                            const descriptionText = `${fieldLabel}: ${fieldValue}`;
+                                            const newDescription = currentConcept.description 
+                                              ? `${currentConcept.description}\n${descriptionText}` 
+                                              : descriptionText;
+                                            
+                                            // Return updated concepts array
+                                            return prev.map((concept, i) =>
+                                              i === index
+                                                ? { 
+                                                    ...concept, 
+                                                    selectedFields: updatedFields,
+                                                    description: newDescription
+                                                  }
+                                                : concept
+                                            );
+                                          });
+                                          
+                                          // Force select reset by changing key
+                                          e.target.value = '';
+                                        }}
+                                      >
+                                        <option value="">Select a field to add...</option>
+                                        {(() => {
+                                          // Always log for debugging
+                                          const hasAudienceLines = c.audienceLineIds && Array.isArray(c.audienceLineIds) && c.audienceLineIds.length > 0;
+                                          
+                                          if (!hasAudienceLines) {
+                                            return <option value="" disabled>Select audience lines first</option>;
+                                          }
+                                          
+                                          // Process all selected audience lines
+                                          const optGroups: JSX.Element[] = [];
+                                          
+                                          c.audienceLineIds.forEach((lineId) => {
+                                            console.log('🔍 Looking for row with ID:', lineId);
+                                            console.log('📊 Available matrixRows:', matrixRows.map((r, idx) => ({ 
+                                              id: r.id || `ROW-${(idx + 1).toString().padStart(3, '0')}`, 
+                                              segment_name: r.segment_name 
+                                            })));
+                                            
+                                            // Find row by id, or by generated id pattern
+                                            let matrixRow = matrixRows.find((r) => r.id === lineId);
+                                            let lineIndex = matrixRows.findIndex((r) => r.id === lineId);
+                                            
+                                            // If not found by id, try index-based lookup (ROW-001, ROW-002, etc.)
+                                            if (!matrixRow && lineId && lineId.startsWith('ROW-')) {
+                                              const indexMatch = lineId.match(/ROW-(\d+)/);
+                                              if (indexMatch) {
+                                                const targetIndex = parseInt(indexMatch[1]) - 1;
+                                                if (targetIndex >= 0 && targetIndex < matrixRows.length) {
+                                                  matrixRow = matrixRows[targetIndex];
+                                                  lineIndex = targetIndex;
+                                                  console.log('✅ Found row by index pattern:', targetIndex);
+                                                }
+                                              }
+                                            }
+                                            
+                                            // If still not found, try matching by generated id
+                                            if (!matrixRow) {
+                                              matrixRows.forEach((r, idx) => {
+                                                const generatedId = r.id || `ROW-${(idx + 1).toString().padStart(3, '0')}`;
+                                                if (generatedId === lineId) {
+                                                  matrixRow = r;
+                                                  lineIndex = idx;
+                                                }
+                                              });
+                                            }
+                                            
+                                            if (!matrixRow) {
+                                              console.error('❌ Row not found! Looking for:', lineId, 'Available IDs:', matrixRows.map((r, idx) => r.id || `ROW-${(idx + 1).toString().padStart(3, '0')}`));
+                                              optGroups.push(
+                                                <optgroup key={lineId} label={`Line (not found)`}>
+                                                  <option value="" disabled>Row not found for ID: {lineId}</option>
+                                                </optgroup>
+                                              );
+                                              return;
+                                            }
+                                            
+                                            console.log('✅ Row found!', matrixRow);
+                                            
+                                            // Get ALL field keys from the row (excluding 'id')
+                                            const rowKeys = Object.keys(matrixRow).filter(key => key !== 'id');
+                                            
+                                            // Show ALL fields that have values (non-empty strings)
+                                            // This ensures we show everything that has actual data
+                                            const availableFields = rowKeys.filter((key) => {
+                                              const value = matrixRow[key];
+                                              // Include if value exists and is not empty
+                                              const hasValue = value !== undefined && value !== null && String(value).trim() !== '';
+                                              return hasValue;
+                                            });
+                                            
+                                            console.log(`📋 Line ${(lineIndex + 1).toString().padStart(3, '0')} (${lineId}):`, {
+                                              totalRowKeys: rowKeys.length,
+                                              fieldsWithValues: availableFields.length,
+                                              allKeys: rowKeys,
+                                              fieldsWithData: availableFields,
+                                              sampleData: availableFields.slice(0, 3).map(k => ({
+                                                key: k,
+                                                value: String(matrixRow[k]).substring(0, 40)
+                                              }))
+                                            });
+                                            
+                                            if (availableFields.length === 0) {
+                                              optGroups.push(
+                                                <optgroup key={lineId} label={`Line ${(lineIndex + 1).toString().padStart(3, '0')} (no values)`}>
+                                                  <option value="" disabled>No fields with values. Row has {rowKeys.length} keys: {rowKeys.slice(0, 5).join(', ')}...</option>
+                                                </optgroup>
+                                              );
+                                              return;
+                                            }
+                                            
+                                            // Create options for this line - show ALL fields with values
+                                            const options = availableFields.map((fieldKey) => {
+                                              const fieldLabel = matrixFields.find((f) => f.key === fieldKey)?.label || fieldKey;
+                                              const rawValue = matrixRow[fieldKey];
+                                              const fieldValue = rawValue !== undefined && rawValue !== null ? String(rawValue).trim() : '';
+                                              const isSelected = c.selectedFields?.some(
+                                                (f) => f.lineId === lineId && f.fieldKey === fieldKey
+                                              );
+                                              
+                                              return (
+                                                <option 
+                                                  key={`${lineId}-${fieldKey}`} 
+                                                  value={`${lineId}|${fieldKey}`}
+                                                  disabled={isSelected}
+                                                >
+                                                  {fieldLabel}: {fieldValue.substring(0, 50)}{fieldValue.length > 50 ? '...' : ''} {isSelected ? '(added)' : ''}
+                                                </option>
+                                              );
+                                            });
+                                            
+                                            console.log(`✅ Created ${options.length} field options for line ${(lineIndex + 1).toString().padStart(3, '0')}`);
+                                            
+                                            console.log(`✅ Created ${options.length} options for line ${(lineIndex + 1).toString().padStart(3, '0')}`);
+                                            
+                                            optGroups.push(
+                                              <optgroup key={lineId} label={`Line ${(lineIndex + 1).toString().padStart(3, '0')} (${availableFields.length} fields)`}>
+                                                {options}
+                                              </optgroup>
+                                            );
+                                          });
+                                          
+                                          return optGroups.length > 0 ? optGroups : <option value="" disabled>No fields found</option>;
+                                        })()}
+                                  </select>
+                                  <p className="text-[10px] text-slate-400 mt-1">
+                                    Select fields to add their values to the concept description for prompting.
+                                  </p>
+                                </div>
+
+                                {/* Display selected fields */}
+                                <div>
+                                      <label className="text-xs font-medium text-slate-600 mb-2 block">
+                                        Selected Fields (informing prompt) {c.selectedFields && Array.isArray(c.selectedFields) ? `(${c.selectedFields.length})` : '(0)'}
+                                      </label>
+                                      {c.selectedFields && Array.isArray(c.selectedFields) && c.selectedFields.length > 0 ? (
+                                        <div className="space-y-2 border border-slate-200 rounded-lg bg-slate-50/40 p-3 max-h-48 overflow-y-auto">
+                                          {c.selectedFields.map((field, fieldIndex) => {
+                                            if (!field || !field.lineId || !field.fieldKey) return null;
+                                            const lineIndex = matrixRows.findIndex((r) => r.id === field.lineId);
+                                            if (lineIndex === -1) return null;
+                                            
+                                            return (
+                                              <div
+                                                key={`${field.lineId}-${field.fieldKey}-${fieldIndex}`}
+                                                className="flex items-start justify-between gap-2 bg-white border border-slate-200 rounded px-2 py-2 text-xs"
+                                              >
+                                                <div className="flex-1 min-w-0">
+                                                  <div className="flex items-center gap-2 mb-1">
+                                                    <span className="font-mono text-[10px] text-blue-600 font-semibold">
+                                                      {(lineIndex + 1).toString().padStart(3, '0')}
+                                                    </span>
+                                                    <span className="font-medium text-slate-700">{field.fieldLabel || field.fieldKey}:</span>
+                                                  </div>
+                                                  <p className="text-slate-600 whitespace-pre-wrap break-words">
+                                                    {field.fieldValue || ''}
+                                                  </p>
+                                                </div>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setConcepts((prev) => {
+                                                      const currentConcept = prev[index];
+                                                      if (!currentConcept || !currentConcept.selectedFields) return prev;
+                                                      
+                                                      // Remove the field
+                                                      const fieldToRemove = currentConcept.selectedFields[fieldIndex];
+                                                      const updatedFields = currentConcept.selectedFields.filter(
+                                                        (_, i) => i !== fieldIndex
+                                                      );
+                                                      
+                                                      // Remove the field's text from description
+                                                      const descriptionTextToRemove = `${fieldToRemove?.fieldLabel || fieldToRemove?.fieldKey}: ${fieldToRemove?.fieldValue || ''}`;
+                                                      let updatedDescription = currentConcept.description || '';
+                                                      if (descriptionTextToRemove && updatedDescription.includes(descriptionTextToRemove)) {
+                                                        // Remove the field text from description
+                                                        updatedDescription = updatedDescription
+                                                          .split('\n')
+                                                          .filter(line => line.trim() !== descriptionTextToRemove.trim())
+                                                          .join('\n')
+                                                          .trim();
+                                                      }
+                                                      
+                                                      return prev.map((concept, i) =>
+                                                        i === index 
+                                                          ? { ...concept, selectedFields: updatedFields, description: updatedDescription } 
+                                                          : concept
+                                                      );
+                                                    });
+                                                  }}
+                                                  className="text-slate-400 hover:text-red-500 text-xs flex-shrink-0 px-1"
+                                                  title="Remove this field"
+                                                >
+                                                  ×
+                                                </button>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <div className="text-[10px] text-slate-400 italic border border-slate-200 rounded-lg bg-slate-50/40 p-3">
+                                          No fields selected yet. Select fields from the dropdown above.
+                                        </div>
+                                      )}
+                                    </div>
+                              </div>
+
+                              {/* 4. Creative Description Details for Concept Prompt */}
+                              <div className="border-t border-gray-100 pt-4">
+                                <div className="flex items-center justify-between mb-2">
+                                  <label className="text-xs font-medium text-slate-600">Creative Description Details</label>
+                                  {c.description && c.description.trim() && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        // Copy description to the AI Prompt field
+                                        updateConceptField(index, 'generatedPrompt', c.description);
+                                      }}
+                                      className="text-xs font-medium text-teal-600 hover:text-teal-700 px-2 py-1 rounded hover:bg-teal-50 transition-colors"
+                                      title="Add description to Concept Generator prompt"
+                                    >
+                                      Add to Generator →
+                                    </button>
+                                  )}
+                                </div>
+                                <textarea
+                                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[200px]"
+                                  placeholder="Free form description of the concept, narrative, hooks, and how it modularly recombines across channels. This will inform the AI prompt for generating the asset."
+                                  value={c.description}
+                                  onChange={(e) => updateConceptField(index, 'description', e.target.value)}
+                                />
+                                <p className="text-[10px] text-slate-400 mt-1">
+                                  Describe the creative concept, visual style, narrative, and any specific requirements for the asset generation.
+                                </p>
                               </div>
                             </div>
 
-                            {/* RIGHT: AI prompt + output card */}
-                            <div className="space-y-2">
-                              <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm flex flex-col gap-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                                    AI asset prompt
+                            {/* RIGHT COLUMN: Concept Generator (Prompt + Output) */}
+                            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col gap-4 h-full">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-semibold text-slate-700">Concept Generator</h4>
+                                {c.kind && (
+                                  <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                                    Generating: {c.kind === 'image' ? 'Image' : c.kind === 'video' ? 'Video' : 'Copy'}
                                   </span>
-                                  <div className="inline-flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-1 py-0.5">
-                                    {(['image', 'copy', 'video'] as const).map((kind) => (
-                                      <button
-                                        key={kind}
-                                        type="button"
-                                        onClick={() => updateConceptField(index, 'kind', kind)}
-                                        className={`text-[10px] px-2 py-0.5 rounded-full ${
-                                          (c.kind ?? 'image') === kind
-                                            ? 'bg-white text-slate-900 shadow-sm'
-                                            : 'text-slate-500 hover:text-slate-700'
-                                        }`}
-                                      >
-                                        {kind === 'image' ? 'Image' : kind === 'video' ? 'Video' : 'Copy'}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
+                                )}
+                              </div>
+
+                              {/* Prompt Box */}
+                              <div>
+                                <label className="text-xs font-medium text-slate-600 mb-2 block">
+                                  AI Prompt {c.kind ? `(for ${c.kind})` : ''}
+                                </label>
                                 <textarea
-                                  className="w-full border border-gray-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[72px]"
-                                  placeholder="Optional: refine the prompt the system will send to generate this asset (image, copy, or video). If left blank, it will be built from the concept fields."
+                                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 min-h-[120px]"
+                                  placeholder={c.kind 
+                                    ? `Enter your prompt for generating this ${c.kind}. If left blank, it will be built from the concept description and selected fields.`
+                                    : "Select an asset type in the left column first, then enter your prompt here. If left blank, it will be built from the concept description."
+                                  }
                                   value={c.generatedPrompt ?? ''}
                                   onChange={(e) =>
                                     updateConceptField(index, 'generatedPrompt', e.target.value as any)
                                   }
                                 />
-                                <div className="flex items-center justify-between">
+                              </div>
+
+                              {/* Generate or Upload Buttons */}
+                              {c.kind === 'image' || c.kind === 'video' ? (
+                                <div className="space-y-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => generateAssetForConcept(index)}
+                                    disabled={c.status === 'generating'}
+                                    className="w-full px-4 py-2.5 text-sm font-medium rounded-lg border border-teal-500 bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                  >
+                                    {c.status === 'generating'
+                                      ? 'Generating...'
+                                      : `Generate ${c.kind === 'video' ? 'Video' : 'Image'}`}
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      const plan: any = previewPlan || {};
-                                      const lines: string[] = [];
-
-                                      if (plan.campaign_name) {
-                                        lines.push(`Campaign: ${plan.campaign_name}`);
+                                      // Create input if it doesn't exist
+                                      if (!conceptVideoUploadRefs.current[c.id]) {
+                                        const input = document.createElement('input');
+                                        input.type = 'file';
+                                        input.accept = c.kind === 'video' ? 'video/*' : 'image/*';
+                                        input.style.display = 'none';
+                                        input.onchange = (e: any) => {
+                                          const file = e.target.files?.[0];
+                                          if (file) {
+                                            const isVideo = file.type.startsWith('video');
+                                            const isImage = file.type.startsWith('image');
+                                            if ((c.kind === 'video' && isVideo) || (c.kind === 'image' && isImage)) {
+                                              const url = URL.createObjectURL(file);
+                                              setConcepts((prev) =>
+                                                prev.map((concept, i) =>
+                                                  i === index
+                                                    ? {
+                                                        ...concept,
+                                                        generatedAssetUrl: url,
+                                                        file_url: url,
+                                                        file_name: file.name,
+                                                        file_type: file.type,
+                                                        status: 'completed',
+                                                        kind: c.kind,
+                                                      }
+                                                    : concept
+                                                )
+                                              );
+                                            }
+                                          }
+                                          // Clean up
+                                          document.body.removeChild(input);
+                                        };
+                                        document.body.appendChild(input);
+                                        conceptVideoUploadRefs.current[c.id] = input;
                                       }
-                                      if (plan.single_minded_proposition) {
-                                        lines.push(`Single-minded proposition: ${plan.single_minded_proposition}`);
-                                      }
-                                      if (plan.primary_audience) {
-                                        lines.push(`Primary audience: ${plan.primary_audience}`);
-                                      }
-                                      if (plan.brand_voice?.summary) {
-                                        lines.push(`Brand voice: ${plan.brand_voice.summary}`);
-                                      }
-
-                                      lines.push(`Concept title: ${c.title || 'Untitled concept'}`);
-                                      if (c.description) {
-                                        lines.push(`Concept description: ${c.description}`);
-                                      }
-                                      if (c.notes) {
-                                        lines.push(`Production notes: ${c.notes}`);
-                                      }
-
-                                      const prompt = lines.join('\n');
-                                      setConcepts((prev) =>
-                                        prev.map((existing, i) =>
-                                          i === index
-                                            ? {
-                                                ...existing,
-                                                status: 'ready',
-                                                generatedPrompt: prompt,
-                                              }
-                                            : existing,
-                                        ),
-                                      );
+                                      conceptVideoUploadRefs.current[c.id]?.click();
                                     }}
-                                    className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-teal-500 bg-teal-600 text-white hover:bg-teal-700"
+                                    className="w-full px-4 py-2.5 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
                                   >
-                                    {`Generate ${
-                                      c.kind === 'video' ? 'video' : c.kind === 'copy' ? 'copy' : 'image'
-                                    } prompt`}
+                                    Upload {c.kind === 'video' ? 'Video' : 'Image'}
                                   </button>
-                                  {c.generatedPrompt && (
-                                    <button
-                                      type="button"
-                                      onClick={() => generateAssetForConcept(index)}
-                                      disabled={c.status === 'generating'}
-                                      className="px-3 py-1.5 text-[11px] font-medium rounded-full border border-teal-500 bg-white text-teal-600 hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                      {c.status === 'generating'
-                                        ? 'Generating...'
-                                        : c.status === 'completed'
-                                          ? 'Regenerate'
-                                          : `Generate ${c.kind === 'video' ? 'video' : 'image'}`}
-                                    </button>
-                                  )}
-                                  <div className="flex items-center gap-2">
-                                    {c.status === 'ready' && (
-                                      <span className="text-[11px] text-emerald-600">Prompt ready</span>
-                                    )}
-                                    {c.status === 'generating' && (
-                                      <span className="text-[11px] text-blue-600">Generating...</span>
-                                    )}
-                                    {c.status === 'completed' && (
-                                      <span className="text-[11px] text-emerald-600">✓ Generated</span>
-                                    )}
-                                    {c.status === 'error' && (
-                                      <span className="text-[11px] text-red-500">Generation failed</span>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setMoodBoardConceptIds((prev) =>
-                                          isOnMoodBoard ? prev.filter((id) => id !== c.id) : [...prev, c.id],
-                                        );
-                                      }}
-                                      className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                                        isOnMoodBoard
-                                          ? 'border-amber-500 text-amber-700 bg-amber-50'
-                                          : 'border-slate-200 text-slate-500 bg-white hover:border-amber-400 hover:text-amber-700'
-                                      }`}
-                                    >
-                                      {isOnMoodBoard ? 'On concept board' : 'Add to concept board'}
-                                    </button>
-                                  </div>
                                 </div>
-                                <div className="border border-slate-100 rounded-lg bg-slate-50/60 px-2.5 py-2 min-h-[72px]">
-                                  {c.generatedAssetUrl && (c.kind === 'image' || c.kind === 'video') ? (
-                                    <div className="space-y-2">
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => generateAssetForConcept(index)}
+                                  disabled={c.status === 'generating' || !c.kind}
+                                  className="w-full px-4 py-2.5 text-sm font-medium rounded-lg border border-teal-500 bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  {c.status === 'generating'
+                                    ? 'Generating...'
+                                    : 'Generate Copy'}
+                                </button>
+                              )}
+
+                              {/* Output Box */}
+                              <div>
+                                <label className="text-xs font-medium text-slate-600 mb-2 block">Generated Output</label>
+                                <div className="border border-slate-200 rounded-lg bg-slate-50/40 p-4 min-h-[250px] flex items-center justify-center">
+                                  {c.status === 'generating' ? (
+                                    <div className="text-center">
+                                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mx-auto mb-2"></div>
+                                      <p className="text-sm text-slate-600">Generating {c.kind}...</p>
+                                    </div>
+                                  ) : (c.generatedAssetUrl || c.file_url) && (c.kind === 'image' || c.kind === 'video') ? (
+                                    <div className="w-full space-y-3">
                                       {c.kind === 'image' ? (
                                         <img
-                                          src={c.generatedAssetUrl}
+                                          src={c.generatedAssetUrl || c.file_url}
                                           alt={c.title || 'Generated image'}
-                                          className="w-full rounded-lg border border-slate-200 max-h-48 object-contain bg-white"
+                                          className="w-full rounded-lg border border-slate-200 max-h-64 object-contain bg-white cursor-pointer hover:opacity-90 transition-opacity"
+                                          onClick={() => setExpandedImageUrl(c.generatedAssetUrl || c.file_url || null)}
                                         />
                                       ) : (
                                         <video
-                                          src={c.generatedAssetUrl}
+                                          src={c.generatedAssetUrl || c.file_url}
                                           controls
-                                          className="w-full rounded-lg border border-slate-200 max-h-48 bg-black"
+                                          className="w-full rounded-lg border border-slate-200 max-h-64 bg-black"
                                         >
                                           Your browser does not support the video tag.
                                         </video>
                                       )}
-                                      <p className="text-[10px] text-slate-500">
-                                        Generated {c.kind} - {c.status === 'completed' ? 'Ready' : 'Processing...'}
+                                      {c.file_name && (
+                                        <p className="text-xs text-slate-500 text-center">
+                                          {c.file_name}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ) : c.generatedAssetUrl && c.kind === 'copy' ? (
+                                    <div className="w-full">
+                                      <p className="text-sm text-slate-700 whitespace-pre-wrap bg-white p-4 rounded border border-slate-200">
+                                        {c.generatedAssetUrl}
                                       </p>
                                     </div>
                                   ) : (
-                                    <p className="text-[11px] text-slate-600 whitespace-pre-wrap">
-                                      {c.generatedPrompt ||
-                                        'No AI output yet. Use "Generate prompt" to create an AI-ready description, then click "Generate image/video" to create the asset.'}
+                                    <p className="text-sm text-slate-400 text-center">
+                                      {c.kind ? `Generated ${c.kind} will appear here.` : 'Select an asset type and enter a prompt to begin.'}
                                     </p>
                                   )}
                                 </div>
                               </div>
+
+                              {/* Action Buttons */}
+                              {c.status === 'completed' && c.generatedAssetUrl && (
+                                <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setMoodBoardConceptIds((prev) =>
+                                        isOnMoodBoard ? prev.filter((id) => id !== c.id) : [...prev, c.id],
+                                      );
+                                    }}
+                                    className={`flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border transition-colors ${
+                                      isOnMoodBoard
+                                        ? 'border-red-500 text-red-700 bg-red-50 hover:bg-red-100'
+                                        : 'border-amber-400 text-amber-600 bg-white hover:bg-amber-50'
+                                    }`}
+                                  >
+                                    {isOnMoodBoard ? 'Remove from Concept Board' : 'Add to Concept Board'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => generateAssetForConcept(index)}
+                                    className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-teal-500 bg-white text-teal-600 hover:bg-teal-50 transition-colors"
+                                  >
+                                    Re-prompt
+                                  </button>
+                                </div>
+                              )}
+
+                              {c.status === 'error' && (
+                                <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+                                  <p className="font-medium mb-1">Generation failed</p>
+                                  <p className="text-red-700">
+                                    {c.kind === 'video' 
+                                      ? 'Video generation requires Veo API access and service account authentication. Please check your backend configuration.'
+                                      : 'Please try again or adjust your prompt.'}
+                                  </p>
+                                  {c.errorMessage && (
+                                    <p className="mt-1 text-[10px] text-red-600 opacity-75">
+                                      {c.errorMessage}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
@@ -6489,7 +7144,15 @@ export default function Home() {
                                   className="relative bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-2 cursor-pointer hover:shadow-md transition-shadow"
                                 >
                                   {c.generatedAssetUrl && (c.kind === 'image' || c.kind === 'video') && (
-                                    <div className="w-full rounded-lg border border-slate-200 overflow-hidden mb-2">
+                                    <div 
+                                      className="w-full rounded-lg border border-slate-200 overflow-hidden mb-2 cursor-pointer hover:opacity-90 transition-opacity"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (c.kind === 'image') {
+                                          setExpandedImageUrl(c.generatedAssetUrl);
+                                        }
+                                      }}
+                                    >
                                       {c.kind === 'image' ? (
                                         <img
                                           src={c.generatedAssetUrl}
@@ -6501,6 +7164,7 @@ export default function Home() {
                                           src={c.generatedAssetUrl}
                                           className="w-full h-32 object-cover bg-black"
                                           controls
+                                          onClick={(e) => e.stopPropagation()}
                                         >
                                           Your browser does not support the video tag.
                                         </video>
@@ -6508,7 +7172,7 @@ export default function Home() {
                                     </div>
                                   )}
                                   <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0">
+                                    <div className="min-w-0 flex-1">
                                       <p className="text-xs font-semibold text-slate-900 truncate">
                                         {c.title || 'Untitled concept'}
                                       </p>
@@ -6520,6 +7184,37 @@ export default function Home() {
                                           </span>
                                         )}
                                       </p>
+                                      {/* Display associated audience lines as numbers */}
+                                      {c.audienceLineIds && c.audienceLineIds.length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-1">
+                                          {c.audienceLineIds.map((lineId) => {
+                                            const lineIndex = matrixRows.findIndex((r) => r.id === lineId);
+                                            if (lineIndex === -1) return null;
+                                            return (
+                                              <span
+                                                key={lineId}
+                                                className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded"
+                                                title={`Audience Line ${(lineIndex + 1).toString().padStart(3, '0')}`}
+                                              >
+                                                {(lineIndex + 1).toString().padStart(3, '0')}
+                                              </span>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                      {/* Display selected fields if any */}
+                                      {c.selectedFields && c.selectedFields.length > 0 && (
+                                        <div className="mt-1.5 text-[10px] text-slate-500">
+                                          <span className="font-medium">Fields:</span>{' '}
+                                          {c.selectedFields.slice(0, 3).map((field, idx) => (
+                                            <span key={`${field.lineId}-${field.fieldKey}`}>
+                                              {idx > 0 && ', '}
+                                              {field.fieldLabel}
+                                            </span>
+                                          ))}
+                                          {c.selectedFields.length > 3 && ` +${c.selectedFields.length - 3} more`}
+                                        </div>
+                                      )}
                                     </div>
                                     <button
                                       type="button"
@@ -7366,5 +8061,32 @@ export default function Home() {
       )}
 
     </main>
+
+      {/* Image Expansion Modal */}
+      {expandedImageUrl && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+          onClick={() => setExpandedImageUrl(null)}
+        >
+          <div className="relative max-w-7xl max-h-[90vh] w-full h-full flex items-center justify-center">
+            <button
+              onClick={() => setExpandedImageUrl(null)}
+              className="absolute top-4 right-4 z-10 text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
+              aria-label="Close"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <img
+              src={expandedImageUrl}
+              alt="Expanded view"
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
+    </>
   );
 }

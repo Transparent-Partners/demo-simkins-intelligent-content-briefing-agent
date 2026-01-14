@@ -3,4 +3,6 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+*service-account*.json
+veo-service-account-key.json
 

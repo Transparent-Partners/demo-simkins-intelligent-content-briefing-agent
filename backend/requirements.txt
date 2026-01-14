@@ -8,3 +8,5 @@ aiofiles==24.1.0
 reportlab==4.2.5
 google-cloud-aiplatform==1.68.0
 google-cloud-storage==2.18.0
+google-auth==2.35.0
+Pillow==11.0.0
