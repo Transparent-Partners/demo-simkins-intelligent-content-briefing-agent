@@ -111,6 +111,7 @@ const BASE_MATRIX_FIELDS: MatrixFieldConfig[] = [
 
   // Channel & Format Selection
   { key: 'platform_environments', label: 'Platform Environments' },
+  { key: 'asset_format_requirements', label: 'Asset Format Requirements' },
   { key: 'contextual_triggers', label: 'Contextual Triggers' },
 
   // Platform-specific audience handles
@@ -269,6 +270,7 @@ type ProductionMatrixLine = {
   destinations: DestinationEntry[];
   notes: string;
   is_feed: boolean;
+  decisioning_rule?: string;  // IF/THEN rule for DCO platforms
   production_details?: string;
   feed_template?: string;
   template_id?: string;
@@ -608,6 +610,7 @@ const AUDIENCE_IMPORT_FIELDS: { key: MatrixFieldKey; label: string }[] = [
   { key: 'call_to_action_objective', label: 'CTA Objective' },
   { key: 'tone_guardrails', label: 'Tone Guardrails' },
   { key: 'platform_environments', label: 'Platform Environments' },
+  { key: 'asset_format_requirements', label: 'Asset Format Requirements' },
   { key: 'contextual_triggers', label: 'Contextual Triggers' },
   { key: 'notes', label: 'Notes' },
 ];
@@ -1167,6 +1170,12 @@ export default function Home() {
     suggested_edits?: { field: string; suggestion: string }[];
   } | null>(null);
   const [showQualityDetails, setShowQualityDetails] = useState(false);
+  
+  // Minimum viable brief threshold for production readiness
+  const PRODUCTION_READY_THRESHOLD = 7.0;
+  const currentScore = briefQualityScore ?? briefCompletionScore ?? 0;
+  const isProductionReady = currentScore >= PRODUCTION_READY_THRESHOLD;
+  
   const [specs, setSpecs] = useState<Spec[]>(PRESET_SPECS);
   const [loadingSpecs, setLoadingSpecs] = useState(false);
   const [specsError, setSpecsError] = useState<string | null>(null);
@@ -3856,24 +3865,32 @@ export default function Home() {
             <button
               type="button"
               onClick={() => switchWorkspace('production')}
-              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
+              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors flex items-center gap-1 ${
                 workspaceView === 'production'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
+              title={!isProductionReady ? `Brief must be ${PRODUCTION_READY_THRESHOLD}/10 to be production-ready (currently ${currentScore.toFixed(1)})` : 'Production Matrix'}
             >
               Production
+              {!isProductionReady && currentScore > 0 && (
+                <span className="text-[9px] text-amber-500" title="Brief score below production threshold">⚠</span>
+              )}
             </button>
             <button
               type="button"
               onClick={() => switchWorkspace('feed')}
-              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
+              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors flex items-center gap-1 ${
                 workspaceView === 'feed'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
+              title={!isProductionReady ? `Brief must be ${PRODUCTION_READY_THRESHOLD}/10 to be production-ready (currently ${currentScore.toFixed(1)})` : 'Content Feed'}
             >
               Feed
+              {!isProductionReady && currentScore > 0 && (
+                <span className="text-[9px] text-amber-500" title="Brief score below production threshold">⚠</span>
+              )}
             </button>
           </div>
           <button
@@ -4219,20 +4236,26 @@ export default function Home() {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Brief Fields</h3>
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                  <div className={`flex items-center gap-2 rounded-full border px-3 py-1 ${
+                    isProductionReady 
+                      ? 'border-emerald-200 bg-emerald-50' 
+                      : 'border-slate-200 bg-slate-50'
+                  }`}>
                     <span className="text-[10px] font-semibold text-slate-500">Quality</span>
                     <span
                       className={`text-[11px] font-semibold ${
-                        (briefQualityScore ?? briefCompletionScore) !== null &&
-                        (briefQualityScore ?? briefCompletionScore)! >= 8
+                        isProductionReady
                           ? 'text-emerald-700'
-                          : 'text-amber-700'
+                          : currentScore >= 5 ? 'text-amber-700' : 'text-red-600'
                       }`}
                     >
-                      {(briefQualityScore ?? briefCompletionScore) !== null
-                        ? `${(briefQualityScore ?? briefCompletionScore)!.toFixed(1)}/10`
+                      {currentScore > 0
+                        ? `${currentScore.toFixed(1)}/10`
                         : '—'}
                     </span>
+                    {isProductionReady && (
+                      <span className="text-[9px] text-emerald-600 font-medium">✓ Ready</span>
+                    )}
                   </div>
                   {(briefQualityGaps.length > 0 || briefCompletionGaps.length > 0) && (
                     <div className="hidden sm:flex items-center gap-2 text-[10px] text-slate-500">
@@ -4766,6 +4789,7 @@ export default function Home() {
                               <th className="px-3 py-2 text-left">Destination</th>
                               <th className="px-3 py-2 text-left">Destinations (add more)</th>
                               <th className="px-3 py-2 text-left">Feed?</th>
+                              <th className="px-3 py-2 text-left">Decisioning Rule</th>
                               <th className="px-3 py-2 text-left">Production Details (non-feed)</th>
                               <th className="px-3 py-2 text-left">Notes</th>
                               <th className="px-3 py-2 text-right"></th>
@@ -4950,6 +4974,19 @@ export default function Home() {
                                       className="h-3 w-3 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                                       checked={row.is_feed}
                                       onChange={(e) => updateProductionMatrixCell(index, 'is_feed', e.target.checked)}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2 align-top">
+                                    <input
+                                      className={`w-full border rounded px-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 ${
+                                        row.is_feed 
+                                          ? 'border-blue-200 bg-blue-50/50 text-slate-700' 
+                                          : 'border-slate-200 bg-slate-50 text-slate-400'
+                                      }`}
+                                      value={row.decisioning_rule ?? ''}
+                                      onChange={(e) => updateProductionMatrixCell(index, 'decisioning_rule' as any, e.target.value)}
+                                      placeholder={row.is_feed ? 'IF audience = X THEN show Y' : 'Enable Feed for DCO rules'}
+                                      disabled={!row.is_feed}
                                     />
                                   </td>
                                   <td className="px-3 py-2 align-top">
@@ -6543,12 +6580,6 @@ export default function Home() {
                                       ? `Add Fields from Selected Audience Line(s) (${c.audienceLineIds.length} line${c.audienceLineIds.length !== 1 ? 's' : ''} selected)`
                                       : 'Add Fields from Selected Audience Line(s) (select audience line above first)'}
                                   </label>
-                                  {/* Debug info */}
-                                  {process.env.NODE_ENV === 'development' && (
-                                    <div className="text-[9px] text-slate-400 mb-1 font-mono bg-slate-50 p-1 rounded">
-                                      Debug: audienceLineIds={JSON.stringify(c.audienceLineIds)}, matrixRows={matrixRows.length}, matrixFields={matrixFields.length}
-                                    </div>
-                                  )}
                                   {matrixRows.length === 0 && (
                                     <p className="text-xs text-red-500 mb-2">⚠️ No matrix rows available. Please add rows in the Audience module first.</p>
                                   )}
