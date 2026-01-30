@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { extractBriefFields as extractFields } from '../../utils/extractBriefFields';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GEMINI_API_KEY = process.env.GOOGLE_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-pro';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
+
+// Wrapper to maintain backward compatibility with the API route
+function extractBriefFields(chatLog: any[], currentState: any): Record<string, string> {
+  return extractFields(chatLog || [], currentState || {});
+}
 
 // Minimal proxy for brief chat to keep the key server-side.
 export async function POST(req: NextRequest) {
@@ -15,12 +21,21 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { current_state, chat_log } = body || {};
 
+    // Extract any brief fields mentioned in the conversation
+    const extractedFields = extractBriefFields(chat_log || [], current_state || {});
+
     const systemPrompt = `
-You are a concise brief partner. Plain English only, no markdown or bullets.
-Work on one field at a time. Use the latest user input to suggest one clear line the user can copy/paste.
-If the user didn't provide text for that field, ask for it directly in one sentence.
-Keep replies concise sentences. Then ask "Ready for the next field?"
-Do not return JSON in your reply.
+You are a concise brief partner helping build a creative campaign brief.
+
+IMPORTANT: When the user provides information about their campaign, acknowledge it clearly by restating what you understood. For example:
+- If they mention a campaign name, say "Campaign Name: [name]"
+- If they mention an audience, say "Primary Audience: [audience]"
+- If they mention a goal, say "Objective: [goal]"
+
+Work on one field at a time. Keep replies to 2-3 sentences max.
+After acknowledging the information, ask "Ready for the next field?" to continue building the brief.
+
+Do not use markdown formatting. Do not use bullets or numbered lists. Plain conversational English only.
 `;
 
     const messages = Array.isArray(chat_log) ? chat_log : [];
@@ -58,9 +73,13 @@ Do not return JSON in your reply.
       const data = await response.json();
       const text = data?.choices?.[0]?.message?.content || 'No reply generated.';
       
+      // Merge extracted fields with current state
+      const updatedState = { ...(current_state || {}), ...extractedFields };
+      
       return NextResponse.json({
         reply: text,
-        state: current_state || {},
+        state: updatedState,
+        extracted_fields: extractedFields,
         quality_score: null,
       });
     } else {
@@ -97,9 +116,13 @@ Do not return JSON in your reply.
         data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join(' ') ||
         'No reply generated.';
       
+      // Merge extracted fields with current state
+      const updatedState = { ...(current_state || {}), ...extractedFields };
+      
       return NextResponse.json({
         reply: text,
-        state: current_state || {},
+        state: updatedState,
+        extracted_fields: extractedFields,
         quality_score: null,
       });
     }

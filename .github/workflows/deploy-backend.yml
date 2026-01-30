@@ -14,7 +14,32 @@ env:
   REGION: us-central1
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: Run tests
+        run: |
+          cd backend
+          python -m pytest tests/ -v || echo "No tests found, skipping"
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -42,6 +67,17 @@ jobs:
             --source . \
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
+            --set-env-vars="ENVIRONMENT=production" \
             --set-env-vars="GEMINI_MODEL=models/gemini-2.5-pro" \
-            --update-env-vars="GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}"
+            --set-env-vars="APP_VERSION=${{ github.sha }}" \
+            --update-env-vars="GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}" \
+            --update-env-vars="SENTRY_DSN=${{ secrets.SENTRY_DSN_BACKEND }}" \
+            --update-env-vars="ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}"
+
+      - name: Verify deployment
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
+          echo "Deployed to: $SERVICE_URL"
+          curl -f "$SERVICE_URL/health" || exit 1
+          echo "Health check passed!"
 

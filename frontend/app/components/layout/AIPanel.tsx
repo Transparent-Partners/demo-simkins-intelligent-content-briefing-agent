@@ -65,12 +65,61 @@ How can I assist you today? You can:
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInput('');
     setAITyping(true);
 
-    // Simulate AI response (in real implementation, call API)
-    setTimeout(() => {
+    try {
+      // Build context from current plan state
+      const planContext = {
+        campaign_name: activationBrief.campaign_name || '',
+        objective: activationBrief.objective || '',
+        kpi: activationBrief.kpi || '',
+        primary_audience: activationBrief.primary_audience || '',
+        smp: activationBrief.single_minded_proposition || '',
+        content_cells: contentMatrix.cells?.length || 0,
+        total_variants: contentMatrix.total_variants || 0,
+        production_complexity: productionPlan.complexity_score || 'unknown',
+        current_lens: roleLens,
+      };
+
+      // Prepare chat log for API
+      const chatLog = updatedMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const res = await fetch('/api/brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_state: planContext,
+          chat_log: chatLog,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.reply || 'I understand your question. Let me analyze the plan and provide guidance.',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      } else {
+        // Fallback to local response generation
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: generateContextualResponse(input, activationBrief, contentMatrix, roleLens),
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
+    } catch (error) {
+      // Fallback to local response on error
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -78,8 +127,9 @@ How can I assist you today? You can:
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
+    } finally {
       setAITyping(false);
-    }, 1500);
+    }
   };
 
   const handleAction = async (action: AIAction) => {

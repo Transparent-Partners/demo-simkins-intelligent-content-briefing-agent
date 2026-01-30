@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Response, Form
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, UploadFile, File, Response, Form, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, field_validator
 from typing import List, Dict, Any, Optional, Literal
 from app.agent_core import process_message
 from app.feed_generator import generate_dco_feed
@@ -11,22 +12,149 @@ from app.api.production_routes import router as production_router
 from app.schemas.feed import AssetFeedRow
 from fastapi.middleware.cors import CORSMiddleware
 import aiofiles
+import asyncio
 import os
 import json
+import logging
+import time
+import uuid
+import re
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import io
 import csv
 from io import StringIO
 
-app = FastAPI(title="Intelligent Briefing Agent")
+# ============================================================================
+# SENTRY ERROR MONITORING
+# ============================================================================
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=ENVIRONMENT,
+        integrations=[
+            StarletteIntegration(transaction_style="endpoint"),
+            FastApiIntegration(transaction_style="endpoint"),
+        ],
+        traces_sample_rate=0.1 if ENVIRONMENT == "production" else 1.0,
+        profiles_sample_rate=0.1 if ENVIRONMENT == "production" else 1.0,
+        send_default_pii=False,  # Don't send PII to Sentry
+    )
+
+app = FastAPI(
+    title="Intelligent Briefing Agent",
+    version=os.getenv("APP_VERSION", "1.0.0"),
+    docs_url="/docs" if ENVIRONMENT != "production" else None,  # Disable docs in production
+    redoc_url="/redoc" if ENVIRONMENT != "production" else None,
+)
+
+# Use structured logging in production
+from app.utils.logging import logger as structured_logger, log_request
+logger = logging.getLogger("app")
+
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "120"))
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "10"))
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+
+_rate_limit_lock = asyncio.Lock()
+_rate_limit_buckets: dict[str, dict[str, float | int]] = {}
+
+
+def _error_payload(code: str, message: str, request_id: str, details: Any | None = None) -> dict:
+    payload = {"error": {"code": code, "message": message, "request_id": request_id}}
+    if details is not None:
+        payload["error"]["details"] = details
+    return payload
+
+
+@app.middleware("http")
+async def request_context_and_rate_limit(request: Request, call_next):
+    request_id = uuid.uuid4().hex
+    request.state.request_id = request_id
+    start_time = time.perf_counter()
+
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "")
+    now = time.time()
+
+    async with _rate_limit_lock:
+        bucket = _rate_limit_buckets.get(client_ip)
+        if not bucket or now - float(bucket["start"]) >= RATE_LIMIT_WINDOW_SECONDS:
+            bucket = {"start": now, "count": 0}
+            _rate_limit_buckets[client_ip] = bucket
+
+        bucket["count"] = int(bucket["count"]) + 1
+        if int(bucket["count"]) > RATE_LIMIT_MAX_REQUESTS:
+            return JSONResponse(
+                status_code=429,
+                content=_error_payload(
+                    code="rate_limited",
+                    message="Rate limit exceeded. Please retry shortly.",
+                    request_id=request_id,
+                ),
+                headers={"X-Request-ID": request_id},
+            )
+
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    
+    # Log request (skip health checks to reduce noise)
+    if request.url.path not in ["/health", "/ready", "/"]:
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        log_request(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+    
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    request_id = getattr(request.state, "request_id", None) or uuid.uuid4().hex
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_error_payload(code="http_error", message=str(exc.detail), request_id=request_id),
+        headers={"X-Request-ID": request_id},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.state, "request_id", None) or uuid.uuid4().hex
+    logger.exception("Unhandled error", extra={"request_id": request_id})
+    return JSONResponse(
+        status_code=500,
+        content=_error_payload(code="internal_error", message="Unexpected error.", request_id=request_id),
+        headers={"X-Request-ID": request_id},
+    )
+
+# Production-aware CORS configuration
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").split(",") if os.getenv("ALLOWED_ORIGINS") else ["*"]
+IS_PRODUCTION = os.getenv("ENVIRONMENT", "development") == "production"
+
+if IS_PRODUCTION and ALLOWED_ORIGINS == ["*"]:
+    logger.warning("Running in production with wildcard CORS - consider restricting origins")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
 )
 
 app.include_router(brief_router, prefix="/brief", tags=["brief"])
@@ -44,8 +172,47 @@ async def root():
   return {
     "service": "Intelligent Briefing Agent",
     "status": "ok",
-    "endpoints": ["/docs", "/chat", "/brief/chat", "/matrix", "/concepts", "/specs", "/production"],
+    "version": os.getenv("APP_VERSION", "1.0.0"),
+    "environment": os.getenv("ENVIRONMENT", "development"),
+    "endpoints": ["/docs", "/health", "/ready", "/chat", "/brief/chat", "/matrix", "/concepts", "/specs", "/production"],
   }
+
+
+@app.get("/health")
+async def health_check():
+    """
+    Liveness probe - indicates the service is running.
+    Used by load balancers and orchestrators for basic health checks.
+    """
+    return {
+        "status": "healthy",
+        "service": "Intelligent Briefing Agent",
+        "timestamp": time.time(),
+    }
+
+
+@app.get("/ready")
+async def readiness_check():
+    """
+    Readiness probe - indicates the service is ready to accept traffic.
+    Checks critical dependencies before confirming readiness.
+    """
+    checks = {
+        "api": True,
+        "rate_limiter": True,
+    }
+    
+    # Check if AI model key is configured
+    gemini_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    checks["ai_model"] = bool(gemini_key)
+    
+    all_ready = all(checks.values())
+    
+    return {
+        "status": "ready" if all_ready else "degraded",
+        "checks": checks,
+        "timestamp": time.time(),
+    }
 
 class ChatMessage(BaseModel):
     role: str
@@ -267,6 +434,11 @@ async def prompt_image_endpoint(
         
         # Read image file
         image_bytes = await file.read()
+        if len(image_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Max upload size is {MAX_UPLOAD_MB} MB.",
+            )
         mime_type = file.content_type or "image/jpeg"
         
         if use_gemini:
@@ -303,6 +475,11 @@ async def prompt_image_endpoint(
 async def upload_file(file: UploadFile = File(...)):
     try:
         raw_bytes = await file.read()
+        if len(raw_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Max upload size is {MAX_UPLOAD_MB} MB.",
+            )
         filename = file.filename or "uploaded_file"
         lower_name = filename.lower()
 

@@ -57,23 +57,35 @@ export function LeftRail() {
   return (
     <div className="flex flex-col bg-slate-900 border-r border-slate-700 w-60">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-slate-700">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-            <span className="text-white text-sm font-bold">M</span>
+      <div className="flex flex-col border-b border-slate-700">
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+              <span className="text-white text-sm font-bold">M</span>
+            </div>
+            <div>
+              <h1 className="text-white font-semibold text-sm">ModCon Planner</h1>
+              <p className="text-slate-400 text-xs">Planning Workspace</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-white font-semibold text-sm">ModCon Planner</h1>
-            <p className="text-slate-400 text-xs">Planning Workspace</p>
-          </div>
+          <button
+            onClick={toggleLeftRail}
+            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+            title="Collapse sidebar"
+          >
+            <ChevronLeftIcon />
+          </button>
         </div>
-        <button
-          onClick={toggleLeftRail}
-          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
-          title="Collapse sidebar"
+        {/* Back to Brief Builder link */}
+        <a
+          href="/"
+          className="mx-4 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-teal-400 hover:text-teal-300 hover:bg-slate-800 transition-colors"
         >
-          <ChevronLeftIcon />
-        </button>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Brief Builder
+        </a>
       </div>
 
       {/* Campaign Name */}

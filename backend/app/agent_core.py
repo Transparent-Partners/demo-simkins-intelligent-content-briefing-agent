@@ -1,9 +1,10 @@
+import asyncio
 import json
 import os
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import List
+
+import httpx
 
 from dotenv import load_dotenv
 
@@ -50,7 +51,39 @@ Current Plan State:
 {current_plan}
 """
 
-def _gemini_generate(system_prompt: str, chat_log: List[dict]) -> str:
+def _should_retry(status_code: int | None) -> bool:
+    return status_code in {408, 429, 500, 502, 503, 504}
+
+
+async def _post_json_with_retries(
+    url: str,
+    payload: dict,
+    headers: dict,
+    timeout_seconds: float,
+    max_retries: int = 2,
+    backoff_seconds: float = 0.75,
+) -> str:
+    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        for attempt in range(max_retries + 1):
+            try:
+                resp = await client.post(url, json=payload, headers=headers)
+                resp.raise_for_status()
+                return resp.text
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code if e.response else None
+                body = e.response.text if e.response else ""
+                if attempt < max_retries and _should_retry(status):
+                    await asyncio.sleep(backoff_seconds * (2**attempt))
+                    continue
+                raise RuntimeError(f"API error {status}: {body or str(e)}") from e
+            except httpx.RequestError as e:
+                if attempt < max_retries:
+                    await asyncio.sleep(backoff_seconds * (2**attempt))
+                    continue
+                raise RuntimeError(f"Request failed: {e}") from e
+
+
+async def _gemini_generate(system_prompt: str, chat_log: List[dict]) -> str:
     """
     Minimal Gemini REST call (stdlib only) to keep the serverless backend lightweight.
     """
@@ -81,21 +114,12 @@ def _gemini_generate(system_prompt: str, chat_log: List[dict]) -> str:
     }
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{_MODEL_NAME}:generateContent?key={_GOOGLE_API_KEY}"
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
-
-    try:
-        with urllib.request.urlopen(req, timeout=25) as resp:
-            raw = resp.read().decode("utf-8", errors="ignore")
-    except urllib.error.HTTPError as e:
-        err_body = ""
-        try:
-            err_body = e.read().decode("utf-8", errors="ignore")
-        except Exception:
-            pass
-        raise RuntimeError(f"Gemini API error {e.code}: {err_body or e.reason}") from e
-    except Exception as e:
-        raise RuntimeError(f"Gemini request failed: {e}") from e
+    raw = await _post_json_with_retries(
+        url=url,
+        payload=payload,
+        headers={"Content-Type": "application/json"},
+        timeout_seconds=25,
+    )
 
     try:
         parsed = json.loads(raw)
@@ -109,7 +133,7 @@ def _gemini_generate(system_prompt: str, chat_log: List[dict]) -> str:
         return raw or "No reply generated."
 
 
-def _openai_generate(system_prompt: str, chat_log: List[dict]) -> str:
+async def _openai_generate(system_prompt: str, chat_log: List[dict]) -> str:
     """
     Generate response using OpenAI API.
     """
@@ -119,9 +143,6 @@ def _openai_generate(system_prompt: str, chat_log: List[dict]) -> str:
             "Share campaign name, SMP, audiences, KPIs, flight dates, mandatories, tone/voice, offers, proof points, "
             "and specs/asset libraries, and I'll draft the brief once connected."
         )
-    
-    import urllib.request
-    import urllib.error
     
     messages = [{"role": "system", "content": system_prompt.strip()}]
     for m in (chat_log or []):
@@ -138,29 +159,15 @@ def _openai_generate(system_prompt: str, chat_log: List[dict]) -> str:
     }
     
     url = "https://api.openai.com/v1/chat/completions"
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url, 
-        data=data, 
+    raw = await _post_json_with_retries(
+        url=url,
+        payload=payload,
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {_OPENAI_API_KEY}"
-        }, 
-        method="POST"
+            "Authorization": f"Bearer {_OPENAI_API_KEY}",
+        },
+        timeout_seconds=30,
     )
-    
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = resp.read().decode("utf-8", errors="ignore")
-    except urllib.error.HTTPError as e:
-        err_body = ""
-        try:
-            err_body = e.read().decode("utf-8", errors="ignore")
-        except Exception:
-            pass
-        raise RuntimeError(f"OpenAI API error {e.code}: {err_body or e.reason}") from e
-    except Exception as e:
-        raise RuntimeError(f"OpenAI request failed: {e}") from e
     
     try:
         parsed = json.loads(raw)
@@ -176,6 +183,6 @@ async def process_message(history: List[dict], current_plan: dict) -> str:
     
     # Prefer OpenAI if available, otherwise use Gemini
     if _OPENAI_API_KEY:
-        return _openai_generate(system_prompt=system_prompt, chat_log=history or [])
+        return await _openai_generate(system_prompt=system_prompt, chat_log=history or [])
     else:
-        return _gemini_generate(system_prompt=system_prompt, chat_log=history or [])
+        return await _gemini_generate(system_prompt=system_prompt, chat_log=history or [])

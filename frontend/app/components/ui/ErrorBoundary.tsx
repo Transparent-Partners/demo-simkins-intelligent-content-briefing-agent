@@ -1,10 +1,12 @@
 'use client';
 
 import { Component, ErrorInfo, ReactNode } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import { Button } from './Button';
 
 // ============================================================================
 // ERROR BOUNDARY - Catches React errors and displays fallback UI
+// Integrates with Sentry for production error tracking
 // ============================================================================
 
 interface ErrorBoundaryProps {
@@ -42,7 +44,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       console.error('ErrorBoundary caught an error:', error, errorInfo);
     }
 
-    // Call optional error handler (e.g., for Sentry, LogRocket, etc.)
+    // Report to Sentry in production
+    Sentry.withScope((scope) => {
+      scope.setExtras({
+        componentStack: errorInfo.componentStack,
+      });
+      Sentry.captureException(error);
+    });
+
+    // Call optional error handler
     this.props.onError?.(error, errorInfo);
   }
 

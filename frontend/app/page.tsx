@@ -1,7 +1,44 @@
 'use client';
-import { useState, useRef, useEffect, useMemo, Fragment } from 'react';
+import { useState, useRef, useEffect, useMemo, Fragment, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import Image from 'next/image';
+import { useToast } from './components/ui/Toast';
+import {
+  INITIAL_MATRIX_LIBRARY,
+  INITIAL_STRATEGY_MATRIX_RUNNING_SHOES,
+  RUNNING_SHOE_DEMO_BRIEF,
+  SAMPLE_JSON,
+  SAMPLE_MATRIX,
+  SAMPLE_NARRATIVE,
+} from './data/sampleData';
+import { HISTORICAL_BRIEFS, PRESET_SPECS } from './data/catalogs';
+import { WorkspaceGuidanceBanner } from './components/layout/WorkspaceGuidanceBanner';
+import { ModuleAssistantBar } from './components/layout/ModuleAssistantBar';
+
+// ---- State Persistence Helpers ----
+const STORAGE_KEY_PREFIX = 'modcon_';
+
+function saveToStorage<T>(key: string, value: T): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}${key}`, JSON.stringify(value));
+  } catch (e) {
+    console.warn('Failed to save to localStorage:', key, e);
+  }
+}
+
+function loadFromStorage<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${key}`);
+    if (stored) {
+      return JSON.parse(stored) as T;
+    }
+  } catch (e) {
+    console.warn('Failed to load from localStorage:', key, e);
+  }
+  return fallback;
+}
 
 // API base selection:
 // - In production on Vercel, we generally want SAME-ORIGIN so `vercel.json` routes can forward /brief/* etc.
@@ -219,11 +256,28 @@ type DestinationEntry = {
 
 type ProductionJobRow = {
   job_id: string;
+  ticket_number?: string;              // e.g., "PROD-2026-001" for cross-team tracking
   creative_concept: string;
   asset_type: string;
   destinations: DeliveryDestinationRow[];
   technical_summary: string;
   status: string;
+  // Assignee & delivery tracking
+  assignee?: string;
+  due_date?: string;
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  // Client approval workflow
+  approval_status?: 'pending' | 'submitted' | 'approved' | 'revision_requested' | 'rejected';
+  approver?: string;
+  approved_at?: string;
+  approval_comments?: string;
+  // Production lifecycle
+  revision_number?: number;            // R1, R2, R3 tracking
+  cost_estimate?: number;              // Estimated cost in cents
+  estimated_hours?: number;
+  reviewer?: string;                   // Internal QC reviewer
+  created_at?: string;
+  updated_at?: string;
   // feed/build meta captured later in UI, not required from generator
   is_feed?: boolean;
   feed_template?: string;
@@ -232,6 +286,9 @@ type ProductionJobRow = {
   feed_asset_id?: string;
   production_details?: string;
   missing_destinations?: boolean;
+  // DAM reference
+  dam_asset_url?: string;
+  dam_asset_id?: string;
 };
 
 type BuildDetails = {
@@ -424,179 +481,6 @@ const PARTNER_FIELD_LIBRARY: Record<string, FeedFieldConfig[]> = {
 
 const DEFAULT_FEED_PLATFORM = Object.keys(PARTNER_FIELD_LIBRARY)[0] || 'Meta';
 
-const INITIAL_STRATEGY_MATRIX_RUNNING_SHOES: MatrixRow[] = [
-  {
-    segment_source: 'CRM + site analytics',
-    segment_id: 'RUN-LOYAL',
-    segment_name: 'Run Club Loyalists',
-    segment_size: '48k',
-    priority_level: 'Tier 1 (Bespoke)',
-    segment_description: 'Members logging >30 miles/week; purchase 2+ pairs/year.',
-    key_insight: 'They chase PRs and want proof that lighter shoes = faster splits.',
-    current_perception: 'Our shoes are reliable daily trainers.',
-    desired_perception: 'We are their fastest race-day partner.',
-    primary_message_pillar: 'Speed with evidence (race times, athlete data).',
-    call_to_action_objective: 'Shop the race-day lineup',
-    tone_guardrails: 'Confident, not cocky. Evidence-led.',
-    platform_environments: 'Meta, TikTok, YouTube',
-    contextual_triggers: 'Race calendar, long-run days',
-    notes: 'Use Run Club UGC and Strava overlays.',
-  },
-  {
-    segment_source: 'Prospecting lookalikes',
-    segment_id: 'RUN-NEW',
-    segment_name: 'New to Running',
-    segment_size: '310k',
-    priority_level: 'Tier 2',
-    segment_description: 'Brand-new runners seeking first “real” running shoe.',
-    key_insight: 'They fear injury and decision overwhelm more than price.',
-    current_perception: 'Unsure which model fits their gait/goals.',
-    desired_perception: 'We make choosing easy and reduce injury risk.',
-    primary_message_pillar: 'Confidence + guidance (fit quiz, store fitting).',
-    call_to_action_objective: 'Take the fit quiz',
-    tone_guardrails: 'Encouraging, beginner-safe, avoid jargon.',
-    platform_environments: 'Meta, YouTube, Retail/CRM',
-    contextual_triggers: 'New year, spring training, first 5k sign-up',
-    notes: 'Lead with cushioning/comfort visuals; invite to quiz.',
-  },
-  {
-    segment_source: 'Paid social + search retargeting',
-    segment_id: 'RUN-TRAIL',
-    segment_name: 'Trail Explorers',
-    segment_size: '95k',
-    priority_level: 'Tier 2',
-    segment_description: 'Outdoor-focused runners adding weekly trail miles.',
-    key_insight: 'They want grip + stability without losing speed.',
-    current_perception: 'We are road-first; unsure about trail cred.',
-    desired_perception: 'We’re their trusted trail weapon—light, grippy, stable.',
-    primary_message_pillar: 'Grip + stability proven on technical terrain.',
-    call_to_action_objective: 'Shop trail collection',
-    tone_guardrails: 'Grounded, technical clarity; avoid hype.',
-    platform_environments: 'YouTube, TikTok, Open Web',
-    contextual_triggers: 'Weekend trail plans, park visits, REI-style content',
-    notes: 'Use muddy/gritty textures; show outsole close-ups.',
-  },
-  {
-    segment_source: 'Amazon DSP / Shopping Signals',
-    segment_id: 'RUN-AMZ',
-    segment_name: 'Prime Runners (Footwear Buyers)',
-    segment_size: '120k',
-    priority_level: 'Tier 1',
-    segment_description: 'Recent Amazon purchasers of running shoes/accessories.',
-    key_insight: 'Ready to repurchase on replenishment cadence; care about price + speed.',
-    current_perception: 'See us as a safe mid-tier option; default to Prime deals.',
-    desired_perception: 'We’re the best performance-for-value option with Prime-fast delivery.',
-    primary_message_pillar: 'Value + speed: race-day comfort with Prime convenience.',
-    call_to_action_objective: 'Buy now on Amazon',
-    tone_guardrails: 'Value-forward, straightforward, avoid heavy jargon.',
-    platform_environments: 'Amazon, Open Web',
-    contextual_triggers: '30/60/90-day purchase windows',
-    notes: 'Lead with “Prime fast” + comfort; show price/value.',
-  },
-  {
-    segment_source: 'Meta Retargeting (Pixel)',
-    segment_id: 'RUN-RET-META',
-    segment_name: 'Cart Abandons (Meta)',
-    segment_size: '42k',
-    priority_level: 'Tier 1',
-    segment_description: 'Site visitors who abandoned cart on racing models.',
-    key_insight: 'High intent but need reassurance on fit/return policy.',
-    current_perception: 'Worried shoe may not fit or returns are a hassle.',
-    desired_perception: 'Confident they’ll nail the fit and can return easily.',
-    primary_message_pillar: 'Fit assurance + risk-free checkout.',
-    call_to_action_objective: 'Complete purchase',
-    tone_guardrails: 'Reassuring, concise, proof-driven on fit/returns.',
-    platform_environments: 'Meta',
-    contextual_triggers: 'Cart abandon events, 48-hr window',
-    notes: 'Use dynamic product feed; highlight free returns.',
-  },
-  {
-    segment_source: 'DV360 3P Fitness Data',
-    segment_id: 'RUN-DV360',
-    segment_name: 'Fitness Enthusiasts (DV360)',
-    segment_size: '260k',
-    priority_level: 'Tier 2',
-    segment_description: '3P segments of endurance/fitness content consumers.',
-    key_insight: 'Respond to performance proof and athlete validation.',
-    current_perception: 'View us as solid but not the most performance-proven.',
-    desired_perception: 'Believe we’re race-proven with data and athlete backing.',
-    primary_message_pillar: 'Performance receipts: splits, cushioning tech, athlete quotes.',
-    call_to_action_objective: 'Explore performance lineup',
-    tone_guardrails: 'Proof-first, athletic, avoid fluff.',
-    platform_environments: 'DV360, YouTube, CTV',
-    contextual_triggers: 'Sports highlights, fitness content, CTV sports slots',
-    notes: 'Lean on pro/coach voiceover; show split times.',
-  },
-  {
-    segment_source: 'LiveRamp Syndicated',
-    segment_id: 'RUN-LR',
-    segment_name: 'Loyalty Lookalikes (LiveRamp)',
-    segment_size: '180k',
-    priority_level: 'Tier 2',
-    segment_description: 'Modeled lookalikes off CRM heavy buyers.',
-    key_insight: 'Similar buying power; need proof this is “worth switching.”',
-    current_perception: 'Loyal to incumbent brands; not convinced to switch.',
-    desired_perception: 'See clear upside in switching for speed + perks.',
-    primary_message_pillar: 'Switch incentive + performance upgrade story.',
-    call_to_action_objective: 'Claim loyalty offer',
-    tone_guardrails: 'Confident, value-positive, avoid heavy discounting language.',
-    platform_environments: 'Meta, TikTok, YouTube',
-    contextual_triggers: 'Seasonal sale windows, race weekends',
-    notes: 'Price + performance bundles; show loyalty perks.',
-  },
-  {
-    segment_source: 'Epsilon Household Data',
-    segment_id: 'RUN-EPS',
-    segment_name: 'Household Athletes (HH)',
-    segment_size: '90k',
-    priority_level: 'Tier 3',
-    segment_description: 'HH-level runners buying for family (2+ pairs).',
-    key_insight: 'Value durability + deals for multiple pairs.',
-    current_perception: 'Assume performance shoes are pricey for households.',
-    desired_perception: 'Believe bundles make premium performance affordable for family.',
-    primary_message_pillar: 'Durable mileage + bundle value for households.',
-    call_to_action_objective: 'Shop family bundle',
-    tone_guardrails: 'Practical, warm, avoid overly technical claims.',
-    platform_environments: 'CTV, Open Web, Meta',
-    contextual_triggers: 'Back-to-school, holiday gifting',
-    notes: 'Bundle offers; family/household creative frames.',
-  },
-  {
-    segment_source: 'LinkedIn Matched Audiences',
-    segment_id: 'RUN-B2B',
-    segment_name: 'Wellness-at-Work Leads',
-    segment_size: '55k',
-    priority_level: 'Tier 3',
-    segment_description: 'HR/benefits leaders exploring wellness stipends.',
-    key_insight: 'Care about employee engagement + perk differentiation.',
-    current_perception: 'See us as consumer-first; unsure about workplace fit.',
-    desired_perception: 'View us as a turnkey wellness perk that boosts engagement.',
-    primary_message_pillar: 'Employee perk value + easy rollout.',
-    call_to_action_objective: 'Book a perks consult',
-    tone_guardrails: 'Professional, outcomes-focused, avoid hype.',
-    platform_environments: 'LinkedIn, Open Web',
-    contextual_triggers: 'Budget planning, benefit cycle',
-    notes: 'Emphasize perk value and participation; softer CTA.',
-  },
-  {
-    segment_source: 'TikTok Creator Affinity',
-    segment_id: 'RUN-CREATORS',
-    segment_name: 'Running Creators & Fans',
-    segment_size: '150k',
-    priority_level: 'Tier 2',
-    segment_description: 'TikTok users engaging with running/fitness creators.',
-    key_insight: 'React to authentic creator POV and gear breakdowns.',
-    current_perception: 'Think our ads feel polished but less authentic.',
-    desired_perception: 'Trust creator-led proofs that our shoes perform.',
-    primary_message_pillar: 'Creator-tested performance stories.',
-    call_to_action_objective: 'Watch the collab + shop featured shoe',
-    tone_guardrails: 'Authentic, energetic, avoid corporate polish.',
-    platform_environments: 'TikTok, Meta',
-    contextual_triggers: 'Creator collabs, race recaps',
-    notes: 'Use creator-led hooks; unboxings and on-foot tests.',
-  },
-];
-
 const AUDIENCE_IMPORT_FIELDS: { key: MatrixFieldKey; label: string }[] = [
   { key: 'segment_name', label: 'Audience / Segment' },
   { key: 'segment_id', label: 'Segment ID' },
@@ -613,120 +497,6 @@ const AUDIENCE_IMPORT_FIELDS: { key: MatrixFieldKey; label: string }[] = [
   { key: 'asset_format_requirements', label: 'Asset Format Requirements' },
   { key: 'contextual_triggers', label: 'Contextual Triggers' },
   { key: 'notes', label: 'Notes' },
-];
-
-const INITIAL_MATRIX_LIBRARY: ContentMatrixTemplate[] = [
-  {
-    id: 'MTX-001',
-    name: 'Aurora Sleep OS – Always-on funnel',
-    description: 'Top/mid/bottom-funnel structure for a modular wellness subscription.',
-    rows: [
-      {
-        id: 'VID-001',
-        audience_segment: 'Broad prospects',
-        funnel_stage: 'Awareness',
-        trigger: 'Always on',
-        channel: 'Meta Reels',
-        format: '9:16 Video',
-        message: 'Before / after story of wired-and-tired professional discovering Sleep OS.',
-        variant: 'Emotional pain point',
-      },
-      {
-        id: 'VID-002',
-        audience_segment: 'High-intent site visitors',
-        funnel_stage: 'Consideration',
-        trigger: 'Visited pricing page',
-        channel: 'YouTube In-Stream',
-        format: '16:9 Video',
-        message: 'Explainer on how scenes, routines, and data tie together in 7 days.',
-        variant: 'Mechanics / proof',
-      },
-      {
-        id: 'IMG-001',
-        audience_segment: 'Trial starters',
-        funnel_stage: 'Conversion',
-        trigger: 'Started trial, no routine created',
-        channel: 'CRM Email',
-        format: 'Hero image + modules',
-        message: 'Nudge to build first “Night Reset” routine with simple steps.',
-        variant: 'Onboarding assist',
-      },
-    ],
-  },
-  {
-    id: 'MTX-002',
-    name: 'VoltCharge Go – B2B demand gen',
-    description: 'Role-based matrix for HR, Facilities, and Finance leads.',
-    rows: [
-      {
-        id: 'CAR-001',
-        audience_segment: 'HR leaders',
-        funnel_stage: 'Awareness',
-        trigger: 'Matched to HR persona',
-        channel: 'LinkedIn Feed',
-        format: 'Carousel',
-        message: 'Reframing parking as part of the benefits stack with employee vignettes.',
-        variant: 'Benefits story',
-      },
-      {
-        id: 'CAR-002',
-        audience_segment: 'Facilities leaders',
-        funnel_stage: 'Consideration',
-        trigger: 'Visited solutions page',
-        channel: 'LinkedIn Feed',
-        format: 'Carousel',
-        message: 'Operational simplicity, uptime guarantees, and site rollout playbook.',
-        variant: 'Operations / proof',
-      },
-      {
-        id: 'PDF-001',
-        audience_segment: 'Buying committee',
-        funnel_stage: 'Decision',
-        trigger: 'Requested demo',
-        channel: 'Sales enablement',
-        format: '1-pager PDF',
-        message: 'Shared economic case and KPI grid by role (HR, Facilities, Finance).',
-        variant: 'Business case',
-      },
-    ],
-  },
-  {
-    id: 'MTX-003',
-    name: 'HarvestBox – Multi-family resident journey',
-    description: 'Resident moments across awareness, move-in, and retention.',
-    rows: [
-      {
-        id: 'VID-101',
-        audience_segment: 'Prospective residents',
-        funnel_stage: 'Awareness',
-        trigger: 'Geo-targeted near property',
-        channel: 'Short-form video',
-        format: '9:16 Video',
-        message: 'Week-in-the-life of residents using micro-market for real moments.',
-        variant: 'Lifestyle montage',
-      },
-      {
-        id: 'IMG-201',
-        audience_segment: 'New move-ins',
-        funnel_stage: 'Onboarding',
-        trigger: 'Move-in date',
-        channel: 'Welcome email',
-        format: 'Hero image + secondary tiles',
-        message: 'Orientation to micro-market, hours, and building-specific perks.',
-        variant: 'Welcome / orientation',
-      },
-      {
-        id: 'IMG-301',
-        audience_segment: 'Long-term residents',
-        funnel_stage: 'Retention',
-        trigger: '12+ months tenure',
-        channel: 'In-building signage',
-        format: 'Poster',
-        message: 'Celebrate favorite resident moments and new seasonal offerings.',
-        variant: 'Community / loyalty',
-      },
-    ],
-  },
 ];
 
 type HistoricalBrief = {
@@ -756,187 +526,6 @@ type Concept = {
   errorMessage?: string; // Error message if generation failed
 };
 
-// --- Sample Data ---
-const SAMPLE_JSON = {
-  "campaign_name": "Summer Glow 2024",
-  "single_minded_proposition": "Radiance that lasts all day.",
-  "primary_audience": "Women 25-40, urban professionals, interested in clean beauty.",
-  "bill_of_materials": [
-    {
-      "asset_id": "VID-001",
-      "format": "9:16 Video",
-      "concept": "Morning Routine ASMR",
-      "source_type": "New Shoot",
-      "specs": "1080x1920, 15s, Sound On"
-    },
-    {
-      "asset_id": "IMG-001",
-      "format": "4:5 Static",
-      "concept": "Product Hero Shot on Sand",
-      "source_type": "Stock Composite",
-      "specs": "1080x1350, JPEG"
-    }
-  ],
-  "logic_map": [
-    {
-      "condition": "IF Weather = 'Sunny'",
-      "action": "SHOW 'Beach Day' Variant"
-    },
-    {
-      "condition": "IF Audience = 'Cart Abandoner'",
-      "action": "SHOW '10% Off' Overlay"
-    }
-  ],
-  "production_notes": "Ensure all lighting is natural. No heavy filters. Diversity in casting is mandatory."
-};
-
-const SAMPLE_NARRATIVE = `
-CAMPAIGN: Summer Glow 2024
---------------------------------------------------
-SINGLE MINDED PROPOSITION: 
-"Radiance that lasts all day."
-
-PRIMARY AUDIENCE:
-Women 25-40, urban professionals, interested in clean beauty. 
-They value authenticity and efficient routines.
-
-CREATIVE DIRECTION:
-The visual language should be warm, sun-drenched, and effortless. 
-Avoid over-styling. Focus on "Golden Hour" lighting.
-
-PRODUCTION NOTES:
-- Ensure all lighting is natural. 
-- No heavy filters. 
-- Diversity in casting is mandatory to reflect our urban audience.
-`;
-
-const SAMPLE_MATRIX = [
-  { id: "VID-001", audience: "Broad", trigger: "Always On", content: "Morning Routine ASMR", format: "9:16 Video" },
-  { id: "IMG-001", audience: "Retargeting", trigger: "Cart Abandon", content: "Product Hero + Discount", format: "4:5 Static" },
-  { id: "VID-002", audience: "Loyalty", trigger: "Purchase > 30d", content: "Replenish Reminder", format: "9:16 Video" },
-];
-
-const RUNNING_SHOE_DEMO_BRIEF = {
-  campaignName: 'Velocity Run System Launch',
-  smp: 'Prove faster splits come from lighter shoes and smarter training prompts.',
-  primaryAudience:
-    'Run club loyalists and returning racers logging >30 miles/week who want proof they can PR again.',
-  narrative: `CAMPAIGN: Velocity Run System
---------------------------------------------------
-SINGLE MINDED PROPOSITION:
-"Light, race-ready shoes plus smart cues make you faster on real courses."
-
-PRIMARY AUDIENCE:
-Run club loyalists and returning racers logging >30 miles/week who want proof they can PR again. They watch Strava segments, compare splits, and swap gear advice in group chats.
-
-CREATIVE DIRECTION:
-- Anchor every story in proof: recent race times, split improvements, and athlete validation.
-- Show real runners and coaches in city and trail settings; no sterile studio looks.
-- Keep copy short, verb-led, and confident. Visual cues of speed: cadence, stride, lightness.
-
-PRODUCTION NOTES:
-- 9:16 and 16:9 cutdowns with captions; show outsole close-ups and stability on corners.
-- Use on-screen data overlays sparingly; 1–2 stats per frame.
-- Avoid generic "fitness montage" shots; prioritize race prep moments and post-run recovery.`,
-  audiences: ['Run Club Loyalists', 'New to Running', 'Trail Explorers'],
-  kpis: ['Race shoe revenue lift', 'Fit quiz completions', 'Store visit bookings'],
-  flight: { start: '2024-08-01', end: '2024-09-30' },
-};
-
-const DEMO_SPECS: Spec[] = [
-  {
-    id: 'DEMO_META_STORY',
-    platform: 'Meta',
-    placement: 'Stories / Reels',
-    width: 1080,
-    height: 1920,
-    orientation: 'Vertical',
-    media_type: 'video',
-    notes: '15s max, safe zones respected.',
-  },
-  {
-    id: 'DEMO_TIKTOK_IN_FEED',
-    platform: 'TikTok',
-    placement: 'In-Feed',
-    width: 1080,
-    height: 1920,
-    orientation: 'Vertical',
-    media_type: 'video',
-    notes: '9:16, 15-30s, include captions.',
-  },
-  {
-    id: 'DEMO_YT_BUMPER',
-    platform: 'YouTube',
-    placement: 'Bumper',
-    width: 1920,
-    height: 1080,
-    orientation: 'Horizontal',
-    media_type: 'video',
-    notes: '6s cap, :06 slate acceptable.',
-  },
-  {
-    id: 'DEMO_DISPLAY_MPU',
-    platform: 'Google Display',
-    placement: 'MPU',
-    width: 300,
-    height: 250,
-    orientation: 'Square-ish',
-    media_type: 'image_or_html5',
-    notes: 'Max 150kb, avoid dense legal.',
-  },
-];
-
-// Local spec catalog – no API dependency.
-const PRESET_SPECS: Spec[] = [
-  // Meta
-  { id: 'META_REELS_9x16', platform: 'Meta', placement: 'Reels / Stories', width: 1080, height: 1920, orientation: 'Vertical', media_type: 'video', notes: '15-60s; avoid top/bottom UI zones.' },
-  { id: 'META_FEED_1x1', platform: 'Meta', placement: 'Feed', width: 1080, height: 1080, orientation: 'Square', media_type: 'image_or_video', notes: 'Center focal area; minimal text.' },
-  { id: 'META_FEED_4x5', platform: 'Meta', placement: 'Feed 4:5', width: 1080, height: 1350, orientation: 'Vertical', media_type: 'image_or_video', notes: 'Treat as tall card; keep CTA mid-frame.' },
-  { id: 'META_INSTREAM_16x9', platform: 'Meta', placement: 'In-Stream', width: 1920, height: 1080, orientation: 'Horizontal', media_type: 'video', notes: 'Sound-on; avoid lower-third overlays.' },
-  // TikTok
-  { id: 'TIKTOK_IN_FEED_9x16', platform: 'TikTok', placement: 'In-Feed', width: 1080, height: 1920, orientation: 'Vertical', media_type: 'video', notes: 'Hook in first 2s; keep text off right/bottom edges.' },
-  { id: 'TIKTOK_SPARK_9x16', platform: 'TikTok', placement: 'Spark Ads', width: 1080, height: 1920, orientation: 'Vertical', media_type: 'video', notes: 'Native post re-use; captions high.' },
-  // YouTube
-  { id: 'YOUTUBE_SHORTS_9x16', platform: 'YouTube', placement: 'Shorts', width: 1080, height: 1920, orientation: 'Vertical', media_type: 'video', notes: 'Vertical; central band safe.' },
-  { id: 'YOUTUBE_INSTREAM_16x9', platform: 'YouTube', placement: 'In-Stream', width: 1920, height: 1080, orientation: 'Horizontal', media_type: 'video', notes: 'Sound-on; TV-safe margins.' },
-  { id: 'YOUTUBE_BUMPER_16x9', platform: 'YouTube', placement: 'Bumper', width: 1920, height: 1080, orientation: 'Horizontal', media_type: 'video', notes: '6s cap; message by 2s.' },
-  // LinkedIn
-  { id: 'LINKEDIN_IMAGE_1x1', platform: 'LinkedIn', placement: 'Sponsored Image', width: 1200, height: 1200, orientation: 'Square', media_type: 'image', notes: 'B2B clarity; sparse text.' },
-  { id: 'LINKEDIN_VIDEO_1x1', platform: 'LinkedIn', placement: 'Sponsored Video 1:1', width: 1080, height: 1080, orientation: 'Square', media_type: 'video', notes: 'Subtitles above lower quarter.' },
-  { id: 'LINKEDIN_VIDEO_16x9', platform: 'LinkedIn', placement: 'Sponsored Video 16:9', width: 1920, height: 1080, orientation: 'Horizontal', media_type: 'video', notes: 'Assume sound-off; clear supers.' },
-  // X / Twitter
-  { id: 'X_IMAGE_16x9', platform: 'X', placement: 'Promoted Image 16:9', width: 1600, height: 900, orientation: 'Horizontal', media_type: 'image', notes: 'Avoid corner copy; tweet text carries message.' },
-  { id: 'X_IMAGE_1x1', platform: 'X', placement: 'Promoted Image 1:1', width: 1200, height: 1200, orientation: 'Square', media_type: 'image', notes: 'Square preview; avoid tiny legal.' },
-  { id: 'X_VIDEO_9x16', platform: 'X', placement: 'Vertical Video', width: 1080, height: 1920, orientation: 'Vertical', media_type: 'video', notes: 'Subtitles above progress bar.' },
-  // Google Display / Open Web (IAB)
-  { id: 'GDN_MPU_300x250', platform: 'Open Web', placement: 'MPU', width: 300, height: 250, orientation: 'Rectangle', media_type: 'image_or_html5', notes: 'Max 150kb; logo + short CTA.' },
-  { id: 'GDN_LEADERBOARD_728x90', platform: 'Open Web', placement: 'Leaderboard', width: 728, height: 90, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Tight height; prioritize logo + CTA.' },
-  { id: 'GDN_SUPER_LEADERBOARD_970x90', platform: 'Open Web', placement: 'Super Leaderboard', width: 970, height: 90, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Wide canvas; maintain safe margins for responsive resize.' },
-  { id: 'GDN_HALF_PAGE_300x600', platform: 'Open Web', placement: 'Half Page', width: 300, height: 600, orientation: 'Vertical', media_type: 'image_or_html5', notes: 'Tall canvas; hook in top half.' },
-  { id: 'GDN_BILLBOARD_970x250', platform: 'Open Web', placement: 'Billboard', width: 970, height: 250, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Hero-friendly; maintain safe margins.' },
-  { id: 'GDN_SKYSCRAPER_160x600', platform: 'Open Web', placement: 'Wide Skyscraper', width: 160, height: 600, orientation: 'Vertical', media_type: 'image_or_html5', notes: 'Stack vertically; avoid dense copy at bottom.' },
-  { id: 'GDN_MED_RECT_336x280', platform: 'Open Web', placement: 'Med Rectangle', width: 336, height: 280, orientation: 'Rectangle', media_type: 'image_or_html5', notes: 'Larger MPU variant; keep hierarchy simple.' },
-  { id: 'GDN_SQUARE_250x250', platform: 'Open Web', placement: 'Square', width: 250, height: 250, orientation: 'Square', media_type: 'image_or_html5', notes: 'Compact square; minimal copy.' },
-  { id: 'GDN_MOBILE_LEADERBOARD_320x50', platform: 'Open Web', placement: 'Mobile Leaderboard', width: 320, height: 50, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Extremely short; logo + 1-2 words.' },
-  { id: 'GDN_MOBILE_LARGE_320x100', platform: 'Open Web', placement: 'Mobile Banner', width: 320, height: 100, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'More vertical room than 320x50; keep concise CTA.' },
-  { id: 'GDN_MOBILE_BANNER_300x50', platform: 'Open Web', placement: 'Mobile Banner 300x50', width: 300, height: 50, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Small; favor logo + CTA only.' },
-  { id: 'GDN_BANNER_468x60', platform: 'Open Web', placement: 'Banner 468x60', width: 468, height: 60, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Legacy size; keep elements centered.' },
-  // CTV
-  { id: 'CTV_FULLSCREEN_16x9', platform: 'CTV', placement: 'Full Screen', width: 1920, height: 1080, orientation: 'Horizontal', media_type: 'video', notes: 'TV-safe framing; allow overscan margins.' },
-  { id: 'CTV_QUARTERSCREEN_16x9', platform: 'CTV', placement: 'Quarter Screen Overlay', width: 960, height: 540, orientation: 'Horizontal', media_type: 'video_or_image', notes: 'Overlay; avoid lower-third UI.' },
-  { id: 'CTV_SLATE_16x9', platform: 'CTV', placement: 'End Slate', width: 1920, height: 1080, orientation: 'Horizontal', media_type: 'video_or_image', notes: '3-5s slate; large CTA and URL.' },
-  // Amazon (demo)
-  { id: 'AMAZON_DISPLAY_1x1', platform: 'Amazon', placement: 'Sponsored Display', width: 1080, height: 1080, orientation: 'Square', media_type: 'image_or_video', notes: 'Prime-first messaging; keep product + price clear.' },
-  // Mobile (IAB New Ad Portfolio common units)
-  { id: 'MOB_INLINE_RECT_300x250', platform: 'Mobile', placement: 'Inline Rectangle', width: 300, height: 250, orientation: 'Rectangle', media_type: 'image_or_html5', notes: 'Inline mobile rectangle; common in content feeds.' },
-  { id: 'MOB_BANNER_320x50', platform: 'Mobile', placement: 'Standard Banner', width: 320, height: 50, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Standard mobile banner; ultra-limited height.' },
-  { id: 'MOB_LARGE_BANNER_320x100', platform: 'Mobile', placement: 'Large Banner', width: 320, height: 100, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'More height for clearer CTA.' },
-  { id: 'MOB_FULLPAGE_PORTRAIT_320x480', platform: 'Mobile', placement: 'Fullscreen Portrait', width: 320, height: 480, orientation: 'Vertical', media_type: 'image_or_html5', notes: 'Fullscreen interstitial; respect app safe areas.' },
-  { id: 'MOB_FULLPAGE_LANDSCAPE_480x320', platform: 'Mobile', placement: 'Fullscreen Landscape', width: 480, height: 320, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Landscape interstitial; avoid edge-hugging CTAs.' },
-  { id: 'MOB_TABLET_PORTRAIT_768x1024', platform: 'Mobile', placement: 'Tablet Portrait', width: 768, height: 1024, orientation: 'Vertical', media_type: 'image_or_html5', notes: 'Tablet portrait; maintain generous padding.' },
-  { id: 'MOB_TABLET_LANDSCAPE_1024x768', platform: 'Mobile', placement: 'Tablet Landscape', width: 1024, height: 768, orientation: 'Horizontal', media_type: 'image_or_html5', notes: 'Tablet landscape; keep focal area centered.' },
-];
-
 const DESTINATION_OPTIONS_BY_PLATFORM: Record<string, string[]> = {
   Meta: ['Meta Reels/Stories', 'Meta Feed', 'Meta In-Stream'],
   TikTok: ['TikTok In-Feed'],
@@ -947,6 +536,40 @@ const DESTINATION_OPTIONS_BY_PLATFORM: Record<string, string[]> = {
   CTV: ['CTV Fullscreen', 'CTV Overlay'],
   Mobile: ['In-App Banner', 'In-App Interstitial'],
   Amazon: ['Amazon Sponsored Display', 'Amazon Video'],
+};
+
+// Media Plan Import Types (for Prisma, MediaOcean, etc.)
+type MediaPlanRow = {
+  id: string;
+  platform: string;
+  placement: string;
+  format: string;
+  width: number;
+  height: number;
+  media_type: 'video' | 'image' | 'html5' | 'audio' | 'native';
+  duration?: number;
+  budget?: number;
+  flight_start?: string;
+  flight_end?: string;
+  targeting?: string;
+  notes?: string;
+  selected?: boolean; // For UI selection
+};
+
+// Common media plan column mappings (Prisma, MediaOcean, Fluent, etc.)
+const MEDIA_PLAN_COLUMN_MAPPINGS: Record<string, string[]> = {
+  platform: ['platform', 'publisher', 'channel', 'media_type', 'media type', 'vendor', 'partner'],
+  placement: ['placement', 'placement_name', 'placement name', 'ad unit', 'ad_unit', 'position', 'inventory'],
+  format: ['format', 'ad_format', 'ad format', 'creative_type', 'creative type', 'asset_type'],
+  width: ['width', 'creative_width', 'creative width', 'size_width', 'w'],
+  height: ['height', 'creative_height', 'creative height', 'size_height', 'h'],
+  dimensions: ['dimensions', 'size', 'creative_size', 'creative size', 'ad_size', 'ad size'],
+  duration: ['duration', 'length', 'video_length', 'video length', 'seconds'],
+  budget: ['budget', 'cost', 'spend', 'planned_spend', 'planned spend', 'net_cost', 'gross_cost'],
+  flight_start: ['start_date', 'start date', 'flight_start', 'flight start', 'in_home', 'in home', 'launch'],
+  flight_end: ['end_date', 'end date', 'flight_end', 'flight end', 'out_of_home', 'out of home'],
+  targeting: ['targeting', 'audience', 'demo', 'demographic', 'segment', 'audience_targeting'],
+  notes: ['notes', 'comments', 'description', 'details', 'special_instructions'],
 };
 
 const PLATFORM_NATIVE_KEYWORDS: Record<string, string[]> = {
@@ -995,133 +618,23 @@ const deriveProductionRowsFromMatrix = (rows: MatrixRow[]): ProductionMatrixLine
   });
 };
 
-const HISTORICAL_BRIEFS: HistoricalBrief[] = [
-  {
-    id: "HB-001",
-    campaign_name: "Aurora Sleep OS Launch",
-    single_minded_proposition: "Turn any bedroom into a personalized sleep studio in one week.",
-    primary_audience:
-      "Urban professionals 28–45 who feel constantly 'wired and tired' and are willing to invest in wellness tech.",
-    narrative_brief: `
-BACKGROUND
-Aurora is a subscription-based "Sleep OS" that orchestrates light, sound, temperature, and routine across devices to fix poor sleep hygiene in 7 days. The product is inherently modular: scenes, soundscapes, routines, and tips can all be mixed and matched based on data signals.
-
-OBJECTIVE
-Drive platform sign-ups and 90-day retention by repositioning "sleep tracking" from passive monitoring to active transformation, and by building a reusable content system that can recombine across audiences, stages, and channels.
-
-SINGLE MINDED PROPOSITION
-Turn any bedroom into a personalized sleep studio in one week.
-
-PRIMARY AUDIENCE
-Urban professionals 28–45 who feel constantly "wired and tired", have tried meditation / tracking apps, and now want a solution that actually changes their environment, not just their data. They are tech-forward, over-scheduled, and skeptical of wellness fluff.
-
-MODULAR CONTENT STRATEGY
-- Atomic units:
-  - Problem frames (e.g., "doom scrolling at 1:30am", "3am wake-up", "weekend catch-up sleep").
-  - Sleep studio scenes (Night Reset, Deep Focus, Gentle Wakeup).
-  - Proof points (improved sleep efficiency %, fewer wake-ups, routine streaks).
-  - Coaching micro-tips (30–60 character tiles that can travel across channels).
-- Dimensions for recombination:
-  - Audience sensitivity (biohackers vs burned-out professionals).
-  - Funnel stage (Awareness = emotional consequences, Consideration = OS mechanics, Conversion = 7-day trial offer).
-  - Channel constraints (short vertical video, static tiles, email modules).
-
-CONTENT MATRIX INTENT
-- Upper-funnel: 9:16 and 16:9 video stories that dramatize the "before" and "after" state using modular scenes and VO lines. Variants pivot on different pain points (anxiety, focus, mood).
-- Mid-funnel: carousels and email modules that pair specific problems with Aurora "recipes" (bundles of scenes + settings).
-- Lower-funnel / CRM: triggered flows that reuse the same ingredients but plug in personalized data (nights improved, routines completed).
-
-GUARDRAILS
-- Avoid medical claims; no promises to "cure" conditions.
-- Visual language should feel cinematic and calm, not medical or clinical.
-- The OS metaphor should stay intuitive: never show overwhelming dashboards; focus on simple, modular building blocks the viewer can imagine using.
-`,
-  },
-  {
-    id: "HB-002",
-    campaign_name: "VoltCharge Go – Workplace Fast Charging",
-    single_minded_proposition: "Make every office parking spot feel like a premium EV perk.",
-    primary_audience:
-      "HR and Facilities leaders at mid-market companies offering EV charging as an employee benefit.",
-    narrative_brief: `
-BACKGROUND
-VoltCharge Go installs and manages Level 3 fast chargers in office parks under a revenue-share model. The proposition to employees is emotional (feels like a premium perk), while the proposition to HR / Facilities is rational (recruiting, retention, and ESG optics).
-
-OBJECTIVE
-Generate qualified leads from HR / Facilities leaders and position VoltCharge Go as the easiest way to turn parking lots into recruiting and retention assets, using a modular content system that can flex across buyer roles, verticals, and funnel stages.
-
-SINGLE MINDED PROPOSITION
-Make every office parking spot feel like a premium EV perk.
-
-PRIMARY AUDIENCE
-HR / People teams and Facilities leads at 500–5,000 employee companies who are under pressure to modernize benefits and sustainability optics without adding operational burden.
-
-MODULAR CONTENT STRATEGY
-- Atomic units:
-  - Employee vignettes (new hire, working parent, sustainability champion).
-  - Proof tiles (recruiting metric lifts, satisfaction scores, utilization rates).
-  - Objection handlers (no CapEx, turnkey ops, transparent pricing).
-  - Vertical overlays (tech, healthcare, professional services).
-- Dimensions for recombination:
-  - Role (HR vs Facilities vs Finance).
-  - Building profile (HQ campus vs satellite office).
-  - Funnel stage (Awareness = "parking as perk", Consideration = economics and operations, Decision = case studies and calculators).
-
-CONTENT MATRIX INTENT
-- Upper-funnel: snackable video and animation that reframes the parking lot as part of the "benefits stack". Variants swap in different employee vignettes.
-- Mid-funnel: interactive calculators, one-pagers, and LinkedIn carousels that modularize business cases and objection handlers by role.
-- Lower-funnel: retargeting units that reuse proof tiles and testimonials, but tailored to the vertical + role combination detected.
-
-GUARDRAILS
-- No "range anxiety fear-mongering"; keep tone confident and solution-forward.
-- Avoid generic sustainability stock imagery; show real office environments and people.
-- Make it obvious that the system is modular and scalable across multiple sites, not a one-off pilot.
-`,
-  },
-  {
-    id: "HB-003",
-    campaign_name: "HarvestBox Micro-Market for Multi-Family Buildings",
-    single_minded_proposition: "Turn your lobby into the most loved amenity in the building.",
-    primary_audience:
-      "Property managers and owners of Class A/B multi-family buildings in urban cores.",
-    narrative_brief: `
-BACKGROUND
-HarvestBox installs 24/7 self-checkout "micro-markets" stocked with fresh, local groceries and ready-to-eat meals in residential buildings. It aims to convert everyday "forgot one thing" frictions into memorable building touchpoints.
-
-OBJECTIVE
-Increase inbound demos from property owners and demonstrate that HarvestBox drives both resident satisfaction and ancillary revenue, with a modular content system that can pivot across building archetypes, resident personas, and decision-maker needs.
-
-SINGLE MINDED PROPOSITION
-Turn your lobby into the most loved amenity in the building.
-
-PRIMARY AUDIENCE
-Property managers and asset managers of 150+ unit buildings, focused on NOI, retention, and reviews. They value amenities that are low-touch to operate but high-visibility to residents.
-
-MODULAR CONTENT STRATEGY
-- Atomic units:
-  - Resident moments (late-night snack, forgotten breakfast, hosting friends, kid snack emergencies).
-  - Amenity proof points (NPS lift, review score deltas, occupancy/renewal metrics).
-  - Building archetypes (young professionals, families, active adults).
-  - Operator promises (low-ops, no-staffing, merchandising handled).
-- Dimensions for recombination:
-  - Audience lens (owner, asset manager, property manager).
-  - Building type and geography (downtown high-rise vs suburban garden).
-  - Funnel stage (Awareness = resident stories, Consideration = economics and operations, Decision = case studies and testimonials).
-
-CONTENT MATRIX INTENT
-- Upper-funnel: short vertical video sequences that modularly string together resident moments to show how the micro-market "shows up" throughout a week.
-- Mid-funnel: carousels and landing-page modules that pair a building archetype with the right mix of resident moments and amenity proof points.
-- Lower-funnel: retargeting and CRM that reuse the same modules but swap in building-type specific proof, such as "families in mid-rise X" vs "professionals in tower Y".
-
-GUARDRAILS
-- Avoid framing HarvestBox as a full grocery replacement; position it as hyper-convenient top-up.
-- Visuals should feel warm, neighborly, and food-first, not like a vending machine.
-- Always make it clear that the system is turnkey and does not create new staffing headaches.
-`,
-  },
-];
 
 export default function Home() {
+  const {
+    error: toastError,
+    warning: toastWarning,
+    info: toastInfo,
+    success: toastSuccess,
+  } = useToast();
+  const MAX_UPLOAD_MB = 10;
+  const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+  const isFileTooLarge = (file: File, label: string) => {
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toastError('File too large', `${label} must be under ${MAX_UPLOAD_MB} MB.`);
+      return true;
+    }
+    return false;
+  };
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: 'Hello! I am your Creative Strategy Architect. I can help you build a production-ready intelligent content brief. Shall we start with the Campaign Name and your primary goal?' }
   ]);
@@ -1132,11 +645,17 @@ export default function Home() {
   const [showSample, setShowSample] = useState(false);
   const [sampleTab, setSampleTab] = useState<'narrative' | 'matrix' | 'json'>('narrative');
   const [showLibrary, setShowLibrary] = useState(false);
-  const [demoMode, setDemoMode] = useState(false);
-  const [workspaceView, setWorkspaceView] = useState<'brief' | 'matrix' | 'concepts' | 'production' | 'feed'>('brief');
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+  const [showMediaPlanImport, setShowMediaPlanImport] = useState(false);
+  const [mediaPlanParsedRows, setMediaPlanParsedRows] = useState<MediaPlanRow[]>([]);
+  const [mounted, setMounted] = useState(false);
+  const [demoMode, setDemoMode] = useState(false); // Initial value for SSR, will load from storage after mount
+  type WorkspaceView = 'brief' | 'matrix' | 'concepts' | 'production' | 'feed';
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('brief');
   const [splitRatio, setSplitRatio] = useState(0.6); // kept for potential future resizing
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
   const [rightTab, setRightTab] = useState<'builder' | 'board'>('builder');
+  const [productionBoardView, setProductionBoardView] = useState<'list' | 'kanban'>('list');
   const [matrixFields, setMatrixFields] = useState<MatrixFieldConfig[]>(BASE_MATRIX_FIELDS);
   const [visibleMatrixFields, setVisibleMatrixFields] = useState<MatrixFieldKey[]>(
   [...PRIMARY_MATRIX_KEYS, ...EXECUTION_MATRIX_KEYS],
@@ -1145,14 +664,116 @@ export default function Home() {
   const [showMatrixLibrary, setShowMatrixLibrary] = useState(false);
   const [matrixLibrary, setMatrixLibrary] = useState<ContentMatrixTemplate[]>(INITIAL_MATRIX_LIBRARY);
   const [briefFields, setBriefFields] = useState<BriefFieldConfig[]>(BASE_BRIEF_FIELDS);
-  const [briefState, setBriefState] = useState<ModConBriefState>({
+  const [briefState, setBriefState] = useState<ModConBriefState>(() => loadFromStorage('briefState', {
     campaign_name: '',
     smp: '',
     audiences: [],
     kpis: [],
     flight_dates: {},
     status: 'Draft',
-  });
+  }));
+  
+  // Undo/Redo history for brief state
+  const [briefHistory, setBriefHistory] = useState<ModConBriefState[]>([]);
+  const [briefHistoryIndex, setBriefHistoryIndex] = useState(-1);
+  const [isUndoRedo, setIsUndoRedo] = useState(false);
+  
+  // Autosave indicator state
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [activityLog, setActivityLog] = useState<{ id: string; message: string; time: string }[]>([]);
+  
+  // Track brief changes for history
+  useEffect(() => {
+    if (isUndoRedo) {
+      setIsUndoRedo(false);
+      return;
+    }
+    // Don't add empty states or duplicates to history
+    const lastState = briefHistory[briefHistoryIndex];
+    if (lastState && JSON.stringify(lastState) === JSON.stringify(briefState)) return;
+    
+    // Add current state to history (limit to 50 entries)
+    const newHistory = briefHistory.slice(0, briefHistoryIndex + 1);
+    newHistory.push({ ...briefState });
+    if (newHistory.length > 50) newHistory.shift();
+    setBriefHistory(newHistory);
+    setBriefHistoryIndex(newHistory.length - 1);
+  }, [briefState]);
+  
+  // Undo function
+  const undoBrief = () => {
+    if (briefHistoryIndex > 0) {
+      setIsUndoRedo(true);
+      const newIndex = briefHistoryIndex - 1;
+      setBriefHistoryIndex(newIndex);
+      setBriefState(briefHistory[newIndex]);
+      toastInfo('Undo', 'Previous brief state restored');
+    }
+  };
+  
+  // Redo function
+  const redoBrief = () => {
+    if (briefHistoryIndex < briefHistory.length - 1) {
+      setIsUndoRedo(true);
+      const newIndex = briefHistoryIndex + 1;
+      setBriefHistoryIndex(newIndex);
+      setBriefState(briefHistory[newIndex]);
+      toastInfo('Redo', 'Brief state restored');
+    }
+  };
+  
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in input fields
+      const target = e.target as HTMLElement;
+      const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      
+      // Undo/Redo - works even in input fields
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          redoBrief();
+        } else {
+          e.preventDefault();
+          undoBrief();
+        }
+        return;
+      }
+      
+      // Don't process other shortcuts if in input field
+      if (isInputField) return;
+      
+      // "?" or "/" to show keyboard help
+      if (e.key === '?' || (e.key === '/' && !e.metaKey && !e.ctrlKey)) {
+        e.preventDefault();
+        setShowKeyboardHelp(true);
+        return;
+      }
+      
+      // "Escape" to close modals
+      if (e.key === 'Escape') {
+        if (showKeyboardHelp) setShowKeyboardHelp(false);
+        if (showSample) setShowSample(false);
+        if (showLibrary) setShowLibrary(false);
+        return;
+      }
+      
+      // Number keys 1-5 to navigate stages
+      if (e.key >= '1' && e.key <= '5' && !e.metaKey && !e.ctrlKey) {
+        const stages = ['brief', 'matrix', 'concepts', 'production', 'feed'] as const;
+        const idx = parseInt(e.key) - 1;
+        if (idx >= 0 && idx < stages.length) {
+          setWorkspaceView(stages[idx]);
+        }
+        return;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [briefHistoryIndex, briefHistory, showKeyboardHelp, showSample, showLibrary]);
+  
   // Completion score: instant, local heuristic (useful feedback while typing).
   const [briefCompletionScore, setBriefCompletionScore] = useState<number | null>(null);
   const [briefCompletionGaps, setBriefCompletionGaps] = useState<string[]>([]);
@@ -1175,6 +796,341 @@ export default function Home() {
   const PRODUCTION_READY_THRESHOLD = 7.0;
   const currentScore = briefQualityScore ?? briefCompletionScore ?? 0;
   const isProductionReady = currentScore >= PRODUCTION_READY_THRESHOLD;
+
+  // ============================================================================
+  // AUTO QA SYSTEM
+  // ============================================================================
+  type QAIssue = {
+    id: string;
+    module: 'brief' | 'audiences' | 'concepts' | 'production' | 'feed';
+    severity: 'error' | 'warning' | 'suggestion';
+    title: string;
+    description: string;
+    action?: string;
+    field?: string;
+  };
+
+  const [qaResults, setQaResults] = useState<QAIssue[]>([]);
+  const [qaRunning, setQaRunning] = useState(false);
+  const [showQaPanel, setShowQaPanel] = useState(false);
+  const [lastQaRun, setLastQaRun] = useState<string | null>(null);
+
+  // runAutoQA function is defined below after all state dependencies are declared
+
+  // ============================================================================
+  // MODULE AI ASSISTANT (Right Panel for non-brief modules)
+  // ============================================================================
+  type AIAssistantMessage = {
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: Date;
+  };
+
+  type ModuleContext = 'matrix' | 'concepts' | 'production' | 'feed';
+
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const [aiAssistantMessages, setAiAssistantMessages] = useState<AIAssistantMessage[]>([]);
+  const [aiAssistantInput, setAiAssistantInput] = useState('');
+  const [aiAssistantLoading, setAiAssistantLoading] = useState(false);
+
+  // Module-specific quick prompts
+  const moduleQuickPrompts: Record<ModuleContext, { label: string; prompt: string }[]> = {
+    matrix: [
+      { label: 'Suggest segments', prompt: 'Based on the brief, suggest 3 additional audience segments I should consider.' },
+      { label: 'Validate messaging', prompt: 'Review my audience matrix and check if the messaging aligns with the SMP.' },
+      { label: 'Platform recommendations', prompt: 'Which platforms should I prioritize for each segment?' },
+    ],
+    concepts: [
+      { label: 'Generate variations', prompt: 'Suggest 2-3 variations for the selected concept that could work for different audiences.' },
+      { label: 'Check brief alignment', prompt: 'Does this concept ladder back to our SMP and key messaging?' },
+      { label: 'Visual direction', prompt: 'What visual style and tone would work best for this concept?' },
+    ],
+    production: [
+      { label: 'Validate specs', prompt: 'Review my production jobs and flag any spec issues or platform mismatches.' },
+      { label: 'Estimate timeline', prompt: 'Based on the job count and complexity, estimate production timeline.' },
+      { label: 'Optimization tips', prompt: 'What can I do to streamline this production matrix?' },
+    ],
+    feed: [
+      { label: 'Validate feed', prompt: 'Check my DCO feed structure for common issues before export.' },
+      { label: 'Platform mapping', prompt: 'Help me map these fields correctly for Flashtalking/Innovid.' },
+      { label: 'Best practices', prompt: 'What are DCO feed best practices I should follow?' },
+    ],
+  };
+
+  // Get current module context
+  const getCurrentModuleContext = (): ModuleContext | null => {
+    if (workspaceView === 'matrix') return 'matrix';
+    if (workspaceView === 'concepts') return 'concepts';
+    if (workspaceView === 'production') return 'production';
+    if (workspaceView === 'feed') return 'feed';
+    return null;
+  };
+
+  // Build comprehensive workflow context for SME agents
+  const buildWorkflowContext = () => {
+    const smp = briefState.smp || briefState.single_minded_proposition || '';
+    const campaignName = briefState.campaign_name || 'Untitled Campaign';
+    const primaryAudience = briefState.primary_audience || '';
+    const kpis = briefState.kpis || [];
+    
+    // Analyze workflow readiness
+    const briefComplete = !!(smp && campaignName && primaryAudience);
+    const audiencesReady = matrixRows.length > 0;
+    const conceptsReady = concepts.length > 0;
+    const productionReady = builderJobs.length > 0;
+    const feedReady = feedRows.length > 0;
+    
+    // Identify gaps
+    const upstreamGaps: string[] = [];
+    if (!briefComplete) upstreamGaps.push('Brief incomplete (missing SMP or audience)');
+    if (!audiencesReady) upstreamGaps.push('No audience segments defined');
+    if (!conceptsReady) upstreamGaps.push('No creative concepts created');
+    
+    return {
+      campaign: { name: campaignName, smp, primaryAudience, kpis },
+      audiences: { count: matrixRows.length, segments: matrixRows.slice(0, 5) },
+      concepts: { count: concepts.length, items: concepts.slice(0, 5) },
+      production: {
+        jobCount: builderJobs.length,
+        specCount: specs.length,
+        statusBreakdown: builderJobs.reduce((acc, j) => {
+          acc[j.status] = (acc[j.status] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>),
+        unassigned: builderJobs.filter(j => !j.assignee).length,
+        missingDueDates: builderJobs.filter(j => !j.due_date).length,
+        missingDestinations: builderJobs.filter(j => j.missing_destinations || j.destinations.length === 0).length,
+      },
+      feed: { rowCount: feedRows.length },
+      workflow: { briefComplete, audiencesReady, conceptsReady, productionReady, feedReady, upstreamGaps },
+    };
+  };
+
+  // Generate SME-level response based on module context and user query
+  const generateSMEResponse = (ctx: ModuleContext, message: string, workflowCtx: ReturnType<typeof buildWorkflowContext>): string => {
+    const msgLower = message.toLowerCase();
+    const { campaign, audiences, concepts: conceptsCtx, production, workflow } = workflowCtx;
+
+    // ============================================================================
+    // AUDIENCE MATRIX SME AGENT
+    // ============================================================================
+    if (ctx === 'matrix') {
+      // Check for upstream dependencies first
+      if (!workflow.briefComplete && msgLower.includes('suggest')) {
+        return `⚠️ **Upstream Gap Detected**\n\nBefore I can suggest optimal segments, the brief needs:\n${!campaign.smp ? '• Single-Minded Proposition (SMP)\n' : ''}${!campaign.primaryAudience ? '• Primary audience definition\n' : ''}\n**Recommendation:** Complete the brief first, then I can generate segments that ladder directly to your strategic foundation.\n\n→ Navigate to Brief module to complete these fields.`;
+      }
+
+      if (msgLower.includes('suggest') || msgLower.includes('segment')) {
+        const smpKeywords = campaign.smp.toLowerCase();
+        let suggestions = '';
+        
+        if (smpKeywords.includes('wellness') || smpKeywords.includes('health') || smpKeywords.includes('sleep')) {
+          suggestions = `**Suggested Audience Segments (Based on SMP: "${campaign.smp.slice(0, 60)}...")**\n\n1. **Stressed Professionals** (High Priority)\n   • Insight: "I need to switch off but can't"\n   • Trigger: Evening browsing, productivity content\n   • Platforms: LinkedIn, Instagram, YouTube\n\n2. **Health-Conscious Parents**\n   • Insight: "I put everyone else first"\n   • Trigger: School schedule, family wellness content\n   • Platforms: Meta, Pinterest, CTV\n\n3. **Wellness Skeptics**\n   • Insight: "I've tried everything, nothing works"\n   • Trigger: Product reviews, testimonials\n   • Platforms: YouTube, Reddit (via programmatic)\n\n**Downstream Impact:** These segments will drive ${3 * concepts.count} concept variations minimum.`;
+        } else if (smpKeywords.includes('value') || smpKeywords.includes('save') || smpKeywords.includes('deal')) {
+          suggestions = `**Suggested Audience Segments (Based on SMP: "${campaign.smp.slice(0, 60)}...")**\n\n1. **Smart Shoppers** (High Priority)\n   • Insight: "I research before I buy"\n   • Trigger: Price comparison, review content\n   • Platforms: Google, YouTube, Meta\n\n2. **Deal Seekers**\n   • Insight: "I wait for the right moment"\n   • Trigger: Promotional periods, flash sales\n   • Platforms: Email, Meta, Push notifications\n\n3. **Value Maximizers**\n   • Insight: "I want the best bang for my buck"\n   • Trigger: Bundle offers, loyalty perks\n   • Platforms: CTV, Display, LinkedIn\n\n**Next Step:** Add these to your matrix, then move to Concepts to build messaging variations.`;
+        } else {
+          suggestions = `**Suggested Audience Segments (Based on: "${campaign.smp.slice(0, 60)}...")**\n\n1. **Core Enthusiasts** (High Priority)\n   • Insight: "This is exactly what I've been looking for"\n   • Platforms: Meta, YouTube, Display\n\n2. **Curious Considerers**\n   • Insight: "I'm interested but need more proof"\n   • Platforms: YouTube, Programmatic, CTV\n\n3. **Late Adopters**\n   • Insight: "I'll try it when others have proven it"\n   • Platforms: Display retargeting, Email\n\n**Pro Tip:** Each segment should have distinct message pillars that ladder to your SMP.`;
+        }
+        return suggestions;
+      }
+
+      if (msgLower.includes('validate') || msgLower.includes('review') || msgLower.includes('check')) {
+        if (audiences.count === 0) {
+          return `**Audience Matrix Review**\n\n❌ No segments defined yet.\n\n**To proceed effectively:**\n1. Add 3-5 distinct audience segments\n2. Each segment needs: Name, Key Insight, Platform Environments\n3. Message pillars should tie back to your SMP\n\n**Quick Start:** Use "Suggest segments" to auto-generate based on your brief.`;
+        }
+        
+        const issues: string[] = [];
+        const strengths: string[] = [];
+        
+        audiences.segments.forEach(seg => {
+          if (!seg.key_insight) issues.push(`"${seg.segment_name || 'Unnamed'}" missing key insight`);
+          if (!seg.platform_environments) issues.push(`"${seg.segment_name || 'Unnamed'}" missing platforms`);
+          if (seg.key_insight && seg.primary_message_pillar) strengths.push(`"${seg.segment_name}" well-defined`);
+        });
+
+        return `**Audience Matrix Review** ✓\n\n**Summary:** ${audiences.count} segments defined\n\n${strengths.length > 0 ? `**Strengths:**\n${strengths.map(s => `• ${s}`).join('\n')}\n\n` : ''}${issues.length > 0 ? `**Issues to Address:**\n${issues.map(i => `⚠️ ${i}`).join('\n')}\n\n` : ''}**Downstream Readiness:**\n${conceptsCtx.count > 0 ? `✓ ${conceptsCtx.count} concepts ready for production` : '→ Next: Create concepts that address each segment'}\n\n**Industry Benchmark:** Top ModCon campaigns typically have 4-6 segments with distinct platform strategies.`;
+      }
+
+      if (msgLower.includes('platform') || msgLower.includes('channel')) {
+        return `**Platform Strategy Recommendations**\n\nBased on your ${audiences.count} segments and industry benchmarks:\n\n**Video-First Platforms:**\n• YouTube (Pre-roll, Shorts) - Consideration\n• TikTok (In-Feed, TopView) - Awareness\n• Meta Reels/Stories - Engagement\n• CTV (Roku, Hulu) - Reach\n\n**Static/Display:**\n• Meta Feed - Conversion\n• LinkedIn - B2B audiences\n• Programmatic Display - Retargeting\n\n**DCO Considerations:**\n• Flashtalking: Best for complex versioning\n• Innovid: Strong CTV creative\n• Celtra: Excellent for scale\n\n**Tip:** Map each audience segment to 2-3 priority platforms based on behavior patterns.`;
+      }
+
+      return `**Audience Matrix Assistant** 🎯\n\nI'm your audience strategy SME. I can help with:\n\n• **Segment suggestions** based on your SMP and brief\n• **Matrix validation** to ensure downstream readiness\n• **Platform recommendations** by audience type\n• **Message pillar alignment** with strategic foundation\n\n**Current State:**\n• Campaign: ${campaign.name}\n• Segments: ${audiences.count} defined\n• SMP: ${campaign.smp ? 'Defined ✓' : 'Missing ⚠️'}\n\nWhat would you like to explore?`;
+    }
+
+    // ============================================================================
+    // CONCEPTS SME AGENT
+    // ============================================================================
+    if (ctx === 'concepts') {
+      if (!workflow.audiencesReady && msgLower.includes('generat')) {
+        return `⚠️ **Upstream Gap: No Audience Segments**\n\nTo generate effective concepts, I need audience segments to target.\n\n**Why this matters:**\n• Concepts should address specific audience insights\n• Without segments, concepts lack strategic grounding\n• Production will require audience × concept matrix\n\n**Recommendation:**\n→ Navigate to Audiences module\n→ Add 3-5 segments with key insights\n→ Return here to generate targeted concepts\n\nAlternatively, I can generate generic concepts, but they'll need refinement later.`;
+      }
+
+      if (msgLower.includes('variation') || msgLower.includes('generat') || msgLower.includes('suggest')) {
+        const existingConcepts = conceptsCtx.items.map(c => c.title).join(', ');
+        return `**Concept Variations Based on Your Strategy**\n\n${campaign.smp ? `SMP: "${campaign.smp.slice(0, 80)}..."` : ''}\n${audiences.count > 0 ? `Targeting: ${audiences.segments.slice(0, 3).map(s => s.segment_name).join(', ')}` : ''}\n\n**Video Concepts:**\n1. **"The Moment It Clicks"** (15-30s)\n   • Hook: Problem visualization\n   • Story: Journey to solution\n   • CTA: Discovery-focused\n   • Best for: YouTube, CTV, TikTok\n\n2. **"Before/After Transformation"** (6-15s)\n   • Hook: Pain point callout\n   • Story: Quick proof\n   • CTA: Action-oriented\n   • Best for: Stories, Reels, Shorts\n\n**Static Concepts:**\n3. **"Proof Stack"** (Carousel)\n   • Frame 1: Bold claim\n   • Frames 2-4: Supporting evidence\n   • Frame 5: CTA\n   • Best for: Meta, LinkedIn\n\n4. **"Hero Moment"** (Single Image)\n   • Product in context\n   • Minimal copy, strong visual\n   • Best for: Display, Native\n\n**Production Estimate:** ${audiences.count} segments × 4 concepts = ~${audiences.count * 4} base assets before spec variations.`;
+      }
+
+      if (msgLower.includes('align') || msgLower.includes('brief') || msgLower.includes('check')) {
+        if (conceptsCtx.count === 0) {
+          return `**Brief Alignment Check**\n\n❌ No concepts to evaluate yet.\n\n**Your SMP:** "${campaign.smp || 'Not defined'}"\n\n**Next Steps:**\n1. Use "Generate variations" to create concept ideas\n2. Or manually add concepts via the Concept Builder\n3. Each concept should directly address your SMP\n\n**Quality Standard:** Every concept should answer "How does this deliver the SMP?"`;
+        }
+
+        return `**Brief Alignment Analysis** ✓\n\n**SMP:** "${campaign.smp?.slice(0, 100) || 'Not defined'}"\n\n**Concept Audit:**\n${conceptsCtx.items.slice(0, 3).map(c => `• **${c.title}**: ${c.description?.slice(0, 60)}...\n  ${c.description?.toLowerCase().includes(campaign.smp?.toLowerCase().split(' ')[0] || '') ? '✓ Aligns with SMP language' : '⚠️ Consider stronger SMP connection'}`).join('\n\n')}\n\n**Recommendation:** Ensure each concept can complete this sentence:\n"This concept delivers the SMP by showing [specific execution]."\n\n**Downstream Impact:** ${conceptsCtx.count} concepts × ${production.specCount} specs = ~${conceptsCtx.count * production.specCount} potential production jobs.`;
+      }
+
+      if (msgLower.includes('visual') || msgLower.includes('style') || msgLower.includes('direction')) {
+        return `**Visual Direction Recommendations**\n\n**Based on your brief and industry best practices:**\n\n**Color & Mood:**\n• Lead with brand colors in CTA elements\n• Background should support, not compete\n• Contrast ratio: 4.5:1 minimum for accessibility\n\n**Typography:**\n• Headlines: Bold, 6-10 words max\n• Body: 14px+ for mobile legibility\n• CTA: High contrast, action verbs\n\n**Composition:**\n• Rule of thirds for hero imagery\n• Product placement: right third (Western reading)\n• Safe zones: 10% margin for platform cropping\n\n**Motion (Video):**\n• Hook within first 2 seconds\n• Text animations: 1.5-2s per frame\n• Logo lockup: final 3 seconds\n• Sound-off optimization: subtitles required\n\n**Platform-Specific:**\n• Stories/Reels: Vertical, full bleed\n• Feed: Square performs best\n• CTV: 16:9, larger text for 10-ft viewing`;
+      }
+
+      return `**Concept Development Assistant** 🎨\n\nI'm your creative strategy SME. I can help with:\n\n• **Generate variations** based on brief and audiences\n• **Brief alignment check** for strategic fit\n• **Visual direction** recommendations\n• **Format optimization** by platform\n\n**Current State:**\n• Concepts: ${conceptsCtx.count} created\n• Audiences: ${audiences.count} segments (for targeting)\n• Production-ready: ${conceptsCtx.count > 0 ? 'Ready to proceed ✓' : 'Add concepts first'}\n\nWhat would you like to explore?`;
+    }
+
+    // ============================================================================
+    // PRODUCTION SME AGENT
+    // ============================================================================
+    if (ctx === 'production') {
+      if (workflow.upstreamGaps.length > 0 && msgLower.includes('generat')) {
+        return `⚠️ **Upstream Dependencies Check**\n\n${workflow.upstreamGaps.map(g => `• ${g}`).join('\n')}\n\n**Production Best Practice:**\nGenerate production jobs only after:\n1. Brief is complete with clear SMP\n2. Audiences are defined with platform mapping\n3. Concepts are approved for production\n\n**Why this matters:**\n• Prevents rework when strategy changes\n• Ensures proper asset versioning\n• Maintains traceability from brief to deliverable\n\n**Current Readiness:**\n• Brief: ${workflow.briefComplete ? '✓' : '⚠️'}\n• Audiences: ${workflow.audiencesReady ? '✓' : '⚠️'}\n• Concepts: ${workflow.conceptsReady ? '✓' : '⚠️'}`;
+      }
+
+      if (msgLower.includes('validate') || msgLower.includes('spec') || msgLower.includes('check')) {
+        if (production.jobCount === 0) {
+          return `**Production Validation**\n\n❌ No production jobs created yet.\n\n**To generate jobs:**\n1. Select concepts in the Production Matrix\n2. Choose target specs from the library\n3. Click "Generate Production Plan"\n\n**Current Resources:**\n• Specs in library: ${production.specCount}\n• Concepts available: ${conceptsCtx.count}\n• Potential combinations: ${production.specCount * conceptsCtx.count}\n\n**Recommendation:** Start with high-impact placements (Meta, YouTube, CTV) before expanding to full matrix.`;
+        }
+
+        const issues: string[] = [];
+        if (production.unassigned > 0) issues.push(`${production.unassigned} jobs without assignees`);
+        if (production.missingDueDates > 0) issues.push(`${production.missingDueDates} jobs without due dates`);
+        if (production.missingDestinations > 0) issues.push(`${production.missingDestinations} jobs without destinations`);
+
+        const statusBreakdown = Object.entries(production.statusBreakdown).map(([status, count]) => `• ${status}: ${count}`).join('\n');
+
+        return `**Production Matrix Validation** ✓\n\n**Summary:** ${production.jobCount} jobs across ${production.specCount} specs\n\n**Status Breakdown:**\n${statusBreakdown}\n\n${issues.length > 0 ? `**Issues to Address:**\n${issues.map(i => `⚠️ ${i}`).join('\n')}\n\n` : '**No critical issues detected** ✓\n\n'}**Spec Validation:**\n• All dimensions appear valid\n• Platform requirements met\n• File type specifications complete\n\n**Downstream:** ${production.jobCount} jobs ready for DCO feed export.\n\n**Industry Benchmark:** Typical ModCon campaigns have 15-40 base assets with 3-5x versioning for DCO.`;
+      }
+
+      if (msgLower.includes('timeline') || msgLower.includes('estimate') || msgLower.includes('schedule')) {
+        const videoCount = builderJobs.filter(j => j.asset_type === 'video').length;
+        const staticCount = builderJobs.filter(j => j.asset_type === 'image' || j.asset_type === 'static').length;
+        const h5Count = builderJobs.filter(j => j.asset_type === 'html5' || j.asset_type === 'h5').length;
+        
+        return `**Production Timeline Estimate**\n\n**Asset Breakdown:**\n• Video: ${videoCount} assets\n• Static: ${staticCount} assets\n• HTML5: ${h5Count} assets\n• Total: ${production.jobCount} production jobs\n\n**Estimated Timeline:**\n\n📅 **Week 1: Creative Development**\n• Video storyboards & scripts\n• Static design mockups\n• Internal review cycle\n\n📅 **Week 2: Production**\n• Video editing & motion\n• Static finalization\n• HTML5 build & testing\n\n📅 **Week 3: QC & Trafficking**\n• Platform-specific QC\n• DCO feed generation\n• Trafficking to ad servers\n\n**Acceleration Options:**\n• Template-based production for static\n• AI-assisted video editing\n• Parallel workstreams by asset type\n\n**Resource Recommendation:**\n• ${videoCount > 5 ? 'Consider external video production partner' : 'In-house video team can handle'}\n• ${staticCount > 20 ? 'Use Celtra/StoryTeq for scale' : 'Standard design workflow'}`;
+      }
+
+      if (msgLower.includes('optim') || msgLower.includes('tip') || msgLower.includes('efficiency')) {
+        return `**Production Optimization Tips**\n\n**1. Template-Based Scaling**\nFor ${production.jobCount}+ assets, use:\n• Celtra for static versioning\n• StoryTeq for video templates\n• Google Creative Studio for display\n\n**2. Batch Processing**\nGroup jobs by:\n• Asset type (video, static, H5)\n• Aspect ratio (16:9, 1:1, 9:16)\n• Creative concept\n\n**3. Spec Prioritization**\nFocus production order on:\n• High-reach placements first (CTV, YouTube)\n• Core social (Meta, TikTok)\n• Programmatic display last\n\n**4. QC Efficiency**\n• Automated spec validation\n• Platform preview tools\n• Batch approval workflows\n\n**5. DCO Best Practices**\n• Design for modular swapping\n• Plan feed structure early\n• Test with 3 variants before full build\n\n**Your Efficiency Score:** ${production.unassigned === 0 && production.missingDueDates === 0 ? 'High ✓' : 'Medium - address missing assignments/dates'}`;
+      }
+
+      return `**Production Operations Assistant** 🏭\n\nI'm your production workflow SME. I can help with:\n\n• **Spec validation** for platform compliance\n• **Timeline estimation** based on asset complexity\n• **Optimization tips** for efficiency at scale\n• **DCO preparation** for feed export\n\n**Current State:**\n• Production Jobs: ${production.jobCount}\n• Specs in Library: ${production.specCount}\n• Unassigned: ${production.unassigned}\n• Status: ${Object.entries(production.statusBreakdown).map(([k, v]) => `${k}:${v}`).join(' | ')}\n\nWhat would you like to explore?`;
+    }
+
+    // ============================================================================
+    // FEED / DCO SME AGENT
+    // ============================================================================
+    if (ctx === 'feed') {
+      if (!workflow.productionReady && (msgLower.includes('export') || msgLower.includes('generat'))) {
+        return `⚠️ **Upstream Gap: No Production Jobs**\n\nFeed export requires completed production jobs.\n\n**Current State:**\n• Production Jobs: ${production.jobCount}\n• Feed Rows: ${workflowCtx.feed.rowCount}\n\n**To proceed:**\n1. Navigate to Production module\n2. Generate production jobs from matrix\n3. Return here to export DCO feed\n\n**Feed Structure Preview:**\nOnce jobs are ready, I can help with:\n• Platform-specific field mapping\n• Validation before export\n• Best practices by DCO platform`;
+      }
+
+      if (msgLower.includes('validate') || msgLower.includes('check')) {
+        if (workflowCtx.feed.rowCount === 0) {
+          return `**Feed Validation**\n\n❌ No feed rows created yet.\n\n**To create feed:**\n1. Ensure production jobs are complete\n2. Use "Generate Feed" or manually add rows\n3. Map fields to DCO platform requirements\n\n**Available for Export:**\n• Production Jobs: ${production.jobCount}\n• Ready for feed: ${builderJobs.filter(j => j.status === 'Approved' || j.status === 'Complete').length}`;
+        }
+
+        return `**DCO Feed Validation** ✓\n\n**Summary:** ${workflowCtx.feed.rowCount} feed rows\n\n**Platform Compliance:**\n• Flashtalking: ✓ Dimensions mapped\n• Innovid: ✓ Asset IDs present\n• Celtra: ✓ Component structure valid\n\n**Common Issues Checked:**\n• ✓ No empty required fields\n• ✓ Creative filenames valid\n• ✓ Platform IDs consistent\n\n**Export Readiness:** Ready for DCO platform trafficking\n\n**Recommendation:** Test with 2-3 rows on platform before full upload.`;
+      }
+
+      if (msgLower.includes('map') || msgLower.includes('flashtalking') || msgLower.includes('innovid')) {
+        return `**DCO Platform Field Mapping**\n\n**Flashtalking/Innovid Required Fields:**\n• \`Placement ID\` → Platform-assigned ID\n• \`Creative ID\` → Your creative identifier\n• \`Dimensions\` → WxH format (300x250)\n• \`Asset URL\` → CDN/DAM path\n• \`Click URL\` → Landing page with macros\n\n**Celtra Specific:**\n• \`Component ID\` → Celtra component ref\n• \`Variant ID\` → Feed variant identifier\n• \`Dynamic Text\` → Text layers to swap\n\n**StoryTeq Specific:**\n• \`Template ID\` → Template reference\n• \`Scene Variables\` → JSON object\n• \`Output Format\` → MP4/MOV/GIF\n\n**Best Practice:**\n• Use consistent naming: \`{Campaign}_{Audience}_{Concept}_{Spec}\`\n• Include fallback values for optional fields\n• Test click macros before trafficking\n\n**Your Mapping Status:** ${workflowCtx.feed.rowCount > 0 ? 'In progress' : 'Not started'}`;
+      }
+
+      if (msgLower.includes('best practice') || msgLower.includes('practice')) {
+        return `**DCO Feed Best Practices**\n\n**1. Naming Conventions**\n• Pattern: \`{Client}_{Campaign}_{Audience}_{Format}_{Size}\`\n• Example: \`ACME_Q1Launch_Millennials_Video_16x9\`\n• Avoid: spaces, special characters, version numbers in names\n\n**2. Feed Structure**\n• One row per unique creative\n• Separate feeds by platform when field requirements differ\n• Include all variants in single feed for DCO platforms\n\n**3. Asset References**\n• Use CDN URLs, not local paths\n• Include file extensions\n• Validate URLs resolve before export\n\n**4. Dynamic Fields**\n• Mark optional fields with fallbacks\n• Use consistent variable names across rows\n• Document variable logic in notes column\n\n**5. QA Before Trafficking**\n• Export preview first (10 rows max)\n• Validate on platform sandbox\n• Check click tracking macros\n• Verify asset rendering\n\n**6. Version Control**\n• Include date in feed filename\n• Archive previous versions\n• Track changes in revision notes`;
+      }
+
+      return `**DCO Feed Assistant** 📊\n\nI'm your DCO trafficking SME. I can help with:\n\n• **Feed validation** before export\n• **Platform mapping** for Flashtalking, Innovid, Celtra, StoryTeq\n• **Best practices** for feed structure and naming\n• **Troubleshooting** common export issues\n\n**Current State:**\n• Feed Rows: ${workflowCtx.feed.rowCount}\n• Production Jobs: ${production.jobCount}\n• Export-ready: ${builderJobs.filter(j => j.status === 'Approved').length}\n\n**Workflow Position:**\nYou're at the final stage! After feed export:\n→ Traffic to DCO platform\n→ QA on staging\n→ Launch 🚀\n\nWhat would you like to explore?`;
+    }
+
+    // Default fallback
+    return `I'm here to help with the ${ctx} module. Try asking about:\n\n• Validation and reviews\n• Suggestions and recommendations\n• Best practices\n• Workflow status`;
+  };
+
+  // Send message to AI Assistant
+  const sendAIAssistantMessage = async (message: string) => {
+    if (!message.trim() || aiAssistantLoading) return;
+
+    const userMsg: AIAssistantMessage = {
+      id: `msg-${Date.now()}`,
+      role: 'user',
+      content: message,
+      timestamp: new Date(),
+    };
+    setAiAssistantMessages(prev => [...prev, userMsg]);
+    setAiAssistantInput('');
+    setAiAssistantLoading(true);
+
+    try {
+      const ctx = getCurrentModuleContext();
+      const workflowCtx = buildWorkflowContext();
+
+      if (demoMode) {
+        // Demo mode: Generate SME-level responses
+        await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
+        
+        const demoResponse = ctx ? generateSMEResponse(ctx, message, workflowCtx) : 'Please navigate to a module to get contextual assistance.';
+
+        const assistantMsg: AIAssistantMessage = {
+          id: `msg-${Date.now()}-response`,
+          role: 'assistant',
+          content: demoResponse,
+          timestamp: new Date(),
+        };
+        setAiAssistantMessages(prev => [...prev, assistantMsg]);
+      } else {
+        // Live mode: call API with enhanced context
+        const contextSummary = JSON.stringify(workflowCtx, null, 2);
+        const systemPrompt = `You are a ModCon production SME helping with the ${ctx} module. Understand the full workflow: Brief → Audiences → Concepts → Production → Feed. Be concise and actionable.\n\nContext:\n${contextSummary}`;
+
+        const response = await fetch('/api/brief', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `${systemPrompt}\n\nUser: ${message}`,
+            context: { module: ctx, workflow: workflowCtx },
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const assistantMsg: AIAssistantMessage = {
+            id: `msg-${Date.now()}-response`,
+            role: 'assistant',
+            content: data.response || data.message || generateSMEResponse(ctx!, message, workflowCtx),
+            timestamp: new Date(),
+          };
+          setAiAssistantMessages(prev => [...prev, assistantMsg]);
+        } else {
+          throw new Error('API error');
+        }
+      }
+    } catch (err) {
+      const errorMsg: AIAssistantMessage = {
+        id: `msg-${Date.now()}-error`,
+        role: 'assistant',
+        content: 'Sorry, I encountered an issue. Please try again.',
+        timestamp: new Date(),
+      };
+      setAiAssistantMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setAiAssistantLoading(false);
+    }
+  };
+
+  // Clear AI Assistant messages when switching modules
+  useEffect(() => {
+    setAiAssistantMessages([]);
+  }, [workspaceView]);
   
   const [specs, setSpecs] = useState<Spec[]>(PRESET_SPECS);
   const [loadingSpecs, setLoadingSpecs] = useState(false);
@@ -1187,7 +1143,18 @@ export default function Home() {
   const [builderSelectedConceptId, setBuilderSelectedConceptId] = useState<string>('');
   const [builderSelectedSpecIds, setBuilderSelectedSpecIds] = useState<string[]>([]);
   const [builderJobs, setBuilderJobs] = useState<ProductionJobRow[]>([]);
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
+  const [ticketCounter, setTicketCounter] = useState(() => loadFromStorage('ticketCounter', 0));
   const [builderLoading, setBuilderLoading] = useState(false);
+  
+  // Generate ticket number in PROD-YYYY-NNN format
+  const generateTicketNumber = useCallback(() => {
+    const year = new Date().getFullYear();
+    const nextNum = ticketCounter + 1;
+    setTicketCounter(nextNum);
+    saveToStorage('ticketCounter', nextNum);
+    return `PROD-${year}-${String(nextNum).padStart(3, '0')}`;
+  }, [ticketCounter]);
   const [builderError, setBuilderError] = useState<string | null>(null);
   const [jobRequirements, setJobRequirements] = useState<{ [jobId: string]: string }>({});
   const [jobFeedMeta, setJobFeedMeta] = useState<{
@@ -1214,39 +1181,39 @@ export default function Home() {
     [assetType: string]: RequirementField[];
   }>({
     copy: [
-      { id: 'copy-headline', label: 'Headline', value: '' },
-      { id: 'copy-body', label: 'Body', value: '' },
-      { id: 'copy-cta', label: 'CTA', value: '' },
-      { id: 'copy-tone', label: 'Tone/Voice', value: '' },
-      { id: 'copy-length', label: 'Word count', value: '' },
+      { id: 'copy-headline', label: 'Headline', value: 'Lead with benefit; 6-10 words max' },
+      { id: 'copy-body', label: 'Body', value: 'Expand on SMP; 2-3 sentences' },
+      { id: 'copy-cta', label: 'CTA', value: 'Clear action verb + destination' },
+      { id: 'copy-tone', label: 'Tone/Voice', value: 'Reference brief tone guardrails' },
+      { id: 'copy-length', label: 'Word count', value: 'Platform-specific (see spec)' },
     ],
     image: [
-      { id: 'img-composition', label: 'Composition', value: '' },
-      { id: 'img-subject', label: 'Subject', value: '' },
-      { id: 'img-background', label: 'Background', value: '' },
-      { id: 'img-text', label: 'Text overlay', value: '' },
-      { id: 'img-brand', label: 'Brand elements', value: '' },
+      { id: 'img-composition', label: 'Composition', value: 'Rule of thirds; product focal point' },
+      { id: 'img-subject', label: 'Subject', value: 'Hero product or benefit demonstration' },
+      { id: 'img-background', label: 'Background', value: 'Lifestyle context or brand gradient' },
+      { id: 'img-text', label: 'Text overlay', value: 'Keep to safe zones; max 20% coverage' },
+      { id: 'img-brand', label: 'Brand elements', value: 'Logo placement per brand guidelines' },
     ],
     h5: [
-      { id: 'h5-frame1', label: 'Frame 1 (Hook)', value: '' },
-      { id: 'h5-frame2', label: 'Frame 2 (Value)', value: '' },
-      { id: 'h5-frame3', label: 'Frame 3 (CTA)', value: '' },
-      { id: 'h5-interaction', label: 'Interaction/CTA', value: '' },
-      { id: 'h5-animation', label: 'Animation notes', value: '' },
+      { id: 'h5-frame1', label: 'Frame 1 (Hook)', value: 'Attention-grabbing visual + headline' },
+      { id: 'h5-frame2', label: 'Frame 2 (Value)', value: 'Key benefit or proof point' },
+      { id: 'h5-frame3', label: 'Frame 3 (CTA)', value: 'Clear CTA with button styling' },
+      { id: 'h5-interaction', label: 'Interaction/CTA', value: 'Click-through to landing page' },
+      { id: 'h5-animation', label: 'Animation notes', value: 'Subtle transitions; 15fps max' },
     ],
     video: [
-      { id: 'vid-hook', label: 'Hook (0-3s)', value: '' },
-      { id: 'vid-beats', label: 'Story beats', value: '' },
-      { id: 'vid-duration', label: 'Duration', value: '' },
-      { id: 'vid-captions', label: 'Captions', value: '' },
-      { id: 'vid-cta', label: 'CTA/End card', value: '' },
+      { id: 'vid-hook', label: 'Hook (0-3s)', value: 'Immediate visual impact; no slow builds' },
+      { id: 'vid-beats', label: 'Story beats', value: 'Problem → Solution → Proof → CTA' },
+      { id: 'vid-duration', label: 'Duration', value: 'Per platform spec (6s/15s/30s)' },
+      { id: 'vid-captions', label: 'Captions', value: 'Burned-in or platform-native; 80%+ watch muted' },
+      { id: 'vid-cta', label: 'CTA/End card', value: 'Final 2-3s; logo lockup + destination' },
     ],
     audio: [
-      { id: 'aud-script', label: 'Script', value: '' },
-      { id: 'aud-vo', label: 'VO tone', value: '' },
-      { id: 'aud-sfx', label: 'SFX/Music', value: '' },
-      { id: 'aud-cta', label: 'CTA/Tag', value: '' },
-      { id: 'aud-length', label: 'Length', value: '' },
+      { id: 'aud-script', label: 'Script', value: 'Conversational; match brand voice' },
+      { id: 'aud-vo', label: 'VO tone', value: 'Warm/authoritative per brief' },
+      { id: 'aud-sfx', label: 'SFX/Music', value: 'Licensed track or brand audio signature' },
+      { id: 'aud-cta', label: 'CTA/Tag', value: 'Verbal CTA + brand mention' },
+      { id: 'aud-length', label: 'Length', value: '15s/30s/60s per placement' },
     ],
   });
   const [audienceImportOpen, setAudienceImportOpen] = useState(false);
@@ -1304,13 +1271,15 @@ export default function Home() {
   const [showFeedSourceFields, setShowFeedSourceFields] = useState(true);
   const [feedRows, setFeedRows] = useState<FeedRow[]>([]);
   const [expandedMatrixRows, setExpandedMatrixRows] = useState<Record<number, boolean>>({});
+  const [exportLoadingFormat, setExportLoadingFormat] = useState<'pdf' | 'txt' | 'json' | null>(null);
+  const briefFieldRefs = useRef<Record<string, HTMLInputElement | HTMLTextAreaElement | null>>({});
   const feedEligible = useMemo(
     () => builderJobs.some((j) => j.is_feed) || productionMatrixRows.some((r) => r.is_feed),
     [builderJobs, productionMatrixRows],
   );
 
   // This would eventually be live-updated from the backend
-  const [previewPlan, setPreviewPlan] = useState<any>({
+  const [previewPlan, setPreviewPlan] = useState<any>(() => loadFromStorage('previewPlan', {
     workflow_job_tool: '',
     job_code: '',
     campaign_name: '',
@@ -1318,10 +1287,10 @@ export default function Home() {
     primary_audience: '',
     narrative_brief: '',
     content_matrix: [],
-  }); 
+  })); 
   // Ensure all matrix rows have an 'id' field for proper tracking
   const [matrixRows, setMatrixRows] = useState<MatrixRow[]>(() => {
-    return INITIAL_STRATEGY_MATRIX_RUNNING_SHOES.map((row, index) => {
+    return (INITIAL_STRATEGY_MATRIX_RUNNING_SHOES as MatrixRow[]).map((row, index) => {
       // If row doesn't have an id, generate one based on index
       if (!row.id) {
         return { ...row, id: `ROW-${(index + 1).toString().padStart(3, '0')}` };
@@ -1405,6 +1374,363 @@ export default function Home() {
       status: 'idle',
     },
   ]);
+  const [conceptDraftLoading, setConceptDraftLoading] = useState(false);
+  const hasAudienceMatrix = matrixRows.length > 0;
+  const hasConcepts = concepts.length > 0;
+  const hasProductionPlan = productionMatrixRows.length > 0 || builderJobs.length > 0;
+
+  // ============================================================================
+  // AUTO QA FUNCTION (defined after all state dependencies)
+  // ============================================================================
+  const runAutoQA = useCallback((targetModule?: 'brief' | 'audiences' | 'concepts' | 'production' | 'feed') => {
+    setQaRunning(true);
+    const issues: QAIssue[] = [];
+    let issueCounter = 0;
+    const addIssue = (issue: Omit<QAIssue, 'id'>) => {
+      issueCounter++;
+      issues.push({ ...issue, id: `QA-${issueCounter}` });
+    };
+
+    // ---- BRIEF MODULE QA ----
+    if (!targetModule || targetModule === 'brief') {
+      if (!briefState.campaign_name?.trim()) {
+        addIssue({
+          module: 'brief',
+          severity: 'error',
+          title: 'Missing campaign name',
+          description: 'Every brief needs a campaign name for tracking and reference.',
+          action: 'Add a campaign name',
+          field: 'campaign_name',
+        });
+      }
+
+      if (!briefState.smp?.trim() && !briefState.single_minded_proposition?.trim()) {
+        addIssue({
+          module: 'brief',
+          severity: 'error',
+          title: 'Missing Single-Minded Proposition',
+          description: 'The SMP is the strategic core of your brief.',
+          action: 'Define your SMP',
+          field: 'smp',
+        });
+      } else if ((briefState.smp || briefState.single_minded_proposition || '').length < 20) {
+        addIssue({
+          module: 'brief',
+          severity: 'warning',
+          title: 'SMP may be too brief',
+          description: 'A strong SMP typically needs more context.',
+          field: 'smp',
+        });
+      }
+
+      if (!briefState.audiences?.length && !briefState.primary_audience?.trim()) {
+        addIssue({
+          module: 'brief',
+          severity: 'warning',
+          title: 'No audiences defined',
+          description: 'Define at least one target audience.',
+          action: 'Add audiences',
+          field: 'primary_audience',
+        });
+      }
+
+      if (!briefState.kpis?.length) {
+        addIssue({
+          module: 'brief',
+          severity: 'suggestion',
+          title: 'No KPIs specified',
+          description: 'Adding measurable KPIs helps align production with business goals.',
+          action: 'Add KPIs',
+        });
+      }
+    }
+
+    // ---- AUDIENCES MODULE QA ----
+    if (!targetModule || targetModule === 'audiences') {
+      if (matrixRows.length === 0) {
+        addIssue({
+          module: 'audiences',
+          severity: 'warning',
+          title: 'No audience segments',
+          description: 'Add audience segments for targeted content strategy.',
+          action: 'Import or create audiences',
+        });
+      } else {
+        const missingNames = matrixRows.filter((r) => !r.segment_name?.trim()).length;
+        if (missingNames > 0) {
+          addIssue({
+            module: 'audiences',
+            severity: 'warning',
+            title: `${missingNames} segments missing names`,
+            description: 'Each audience segment needs a clear name.',
+          });
+        }
+      }
+    }
+
+    // ---- CONCEPTS MODULE QA ----
+    if (!targetModule || targetModule === 'concepts') {
+      if (concepts.length === 0) {
+        addIssue({
+          module: 'concepts',
+          severity: 'warning',
+          title: 'No creative concepts',
+          description: 'Generate or add creative concepts to proceed.',
+          action: 'Generate concepts',
+        });
+      }
+    }
+
+    // ---- PRODUCTION MODULE QA ----
+    if (!targetModule || targetModule === 'production') {
+      if (builderJobs.length === 0) {
+        addIssue({
+          module: 'production',
+          severity: 'warning',
+          title: 'No production jobs',
+          description: 'Generate production jobs to start building assets.',
+          action: 'Generate production plan',
+        });
+      } else {
+        const unassigned = builderJobs.filter((j) => !j.assignee?.trim()).length;
+        if (unassigned > 0) {
+          addIssue({
+            module: 'production',
+            severity: 'suggestion',
+            title: `${unassigned} jobs unassigned`,
+            description: 'Assign team members for accountability.',
+          });
+        }
+
+        const noDueDate = builderJobs.filter((j) => !j.due_date).length;
+        if (noDueDate > 0) {
+          addIssue({
+            module: 'production',
+            severity: 'suggestion',
+            title: `${noDueDate} jobs without due dates`,
+            description: 'Set due dates to keep production on schedule.',
+          });
+        }
+
+        const noDestination = builderJobs.filter((j) => j.missing_destinations || j.destinations.length === 0).length;
+        if (noDestination > 0) {
+          addIssue({
+            module: 'production',
+            severity: 'warning',
+            title: `${noDestination} jobs without destinations`,
+            description: 'Jobs need destinations for final specs.',
+          });
+        }
+      }
+
+      if (specs.length === 0) {
+        addIssue({
+          module: 'production',
+          severity: 'warning',
+          title: 'No specs in library',
+          description: 'Add specs or import a media plan.',
+        });
+      }
+    }
+
+    // ---- FEED MODULE QA ----
+    if (!targetModule || targetModule === 'feed') {
+      if (feedRows.length === 0 && builderJobs.length > 0) {
+        addIssue({
+          module: 'feed',
+          severity: 'suggestion',
+          title: 'No feed rows created',
+          description: 'Create feed rows for DCO platform export.',
+        });
+      }
+    }
+
+    setQaResults(issues);
+    setQaRunning(false);
+    setLastQaRun(new Date().toLocaleTimeString());
+    setShowQaPanel(true);
+  }, [briefState, matrixRows, concepts, builderJobs, specs, feedRows]);
+
+  const workspaceGuidance = (() => {
+    switch (workspaceView) {
+      case 'brief':
+        return {
+          title: 'Briefing',
+          body: 'Capture campaign goal, SMP, audience, and proof points to unlock downstream planning.',
+          actionLabel: 'Review quality gaps',
+          action: () => setShowQualityDetails(true),
+          disabled: false,
+        };
+      case 'matrix':
+        return {
+          title: 'Audience Map',
+          body: 'Add segments, insights, triggers, and platform environments so concepts can map cleanly.',
+          actionLabel: 'Import audience CSV',
+          action: openAudienceFilePicker,
+          disabled: false,
+        };
+      case 'concepts':
+        return {
+          title: 'Concept Canvas',
+          body: 'Draft concepts from the brief or upload media, then map them to audience rows.',
+          actionLabel: conceptDraftLoading ? 'Drafting...' : 'Draft from brief',
+          action: draftConceptsFromBrief,
+          disabled: conceptDraftLoading,
+        };
+      case 'production':
+        return {
+          title: 'Production Plan',
+          body: 'Generate build-ready jobs from concepts, specs, and destinations.',
+          actionLabel: productionLoading ? 'Generating...' : 'Generate production plan',
+          action: generateProductionPlan,
+          disabled: productionLoading,
+        };
+      case 'feed':
+        return {
+          title: 'Content Feed',
+          body: 'Map fields and validate output before exporting to downstream platforms.',
+          actionLabel: 'Open feed mapping',
+          action: () => {
+            setShowFeedMapping(true);
+            setShowFeedSourceFields(true);
+          },
+          disabled: false,
+        };
+      default:
+        return null;
+    }
+  })();
+
+  const resolveBriefFieldKey = (gap: string) => {
+    const normalized = gap.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const direct = briefFields.find((f) => f.key.toLowerCase() === gap.toLowerCase());
+    if (direct) return direct.key;
+    const byLabel = briefFields.find(
+      (f) => f.label && f.label.toLowerCase().replace(/[^a-z0-9]+/g, '') === normalized,
+    );
+    if (byLabel) return byLabel.key;
+    const byKey = briefFields.find(
+      (f) => f.key && f.key.toLowerCase().replace(/[^a-z0-9]+/g, '') === normalized,
+    );
+    return byKey?.key;
+  };
+
+  const focusBriefField = (key: string) => {
+    const node = briefFieldRefs.current[key];
+    if (node) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      node.focus();
+      toastInfo('Jumped to field', 'Complete the highlighted brief input.');
+    }
+  };
+
+  const addActivity = (message: string) => {
+    setActivityLog((prev) => [
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, message, time: new Date().toLocaleTimeString() },
+      ...prev,
+    ].slice(0, 6));
+  };
+
+  const briefFieldHints: Record<string, string> = {
+    campaign_name: 'Name the campaign and timeframe so production can label outputs.',
+    single_minded_proposition: 'Use a single sentence: core benefit + proof + target audience.',
+    primary_audience: 'Describe the primary segment and why they care.',
+    narrative_brief: 'Summarize the story arc, proof, and tone in 3–5 sentences.',
+    objective: 'State the business outcome (e.g., trials, purchases, demos).',
+    kpis: 'List measurable outcomes (CTR, conversions, bookings, ROAS).',
+    known_constraints: 'Add mandatories, legal constraints, or asset limitations.',
+  };
+
+  const clampScore = (value: number) => Math.min(10, Math.max(1, Math.round(value)));
+
+  const computeMatrixScore = () => {
+    if (!matrixRows.length) return 1;
+    const required = ['segment_name', 'platform_environments', 'key_insight'];
+    const filled = matrixRows.reduce((acc, row) => {
+      const score = required.reduce((sum, key) => sum + (row[key] ? 1 : 0), 0);
+      return acc + score / required.length;
+    }, 0);
+    return clampScore((filled / matrixRows.length) * 10);
+  };
+
+  const computeConceptScore = () => {
+    if (!concepts.length) return 1;
+    const filled = concepts.reduce((acc, concept) => {
+      const score = [
+        concept.title ? 1 : 0,
+        concept.description ? 1 : 0,
+        concept.audienceLineIds && concept.audienceLineIds.length ? 1 : 0,
+      ].reduce((sum, v) => sum + v, 0) / 3;
+      return acc + score;
+    }, 0);
+    return clampScore((filled / concepts.length) * 10);
+  };
+
+  const computeProductionScore = () => {
+    if (!builderJobs.length) return 1;
+    const filled = builderJobs.reduce((acc, job) => {
+      const score = [
+        job.destinations && job.destinations.length ? 1 : 0,
+        job.technical_summary ? 1 : 0,
+      ].reduce((sum, v) => sum + v, 0) / 2;
+      return acc + score;
+    }, 0);
+    return clampScore((filled / builderJobs.length) * 10);
+  };
+
+  const computeFeedScore = () => {
+    if (!feedRows.length) return 1;
+    const mappingCount = feedFieldMappings.filter((m) => m.platform === feedMappingPlatform).length;
+    const base = Math.min(1, mappingCount / Math.max(1, destinationFieldLibrary.length));
+    return clampScore((base + 0.5) * 10);
+  };
+
+  const moduleAssistant = (() => {
+    const gapList = (briefQualityGaps.length ? briefQualityGaps : briefCompletionGaps).slice(0, 4);
+    if (workspaceView === 'brief') {
+      return {
+        title: 'Brief',
+        score: currentScore || 1,
+        completionNote: isProductionReady ? 'Brief is production-ready.' : 'Strengthen the brief to unlock production.',
+        tips: gapList.length ? gapList : ['Add proof points', 'Clarify audience triggers', 'Define CTA'],
+        dataFlowNote: 'Brief inputs shape the audience matrix, which drives concepts, production jobs, and the final feed.',
+      };
+    }
+    if (workspaceView === 'matrix') {
+      return {
+        title: 'Audience Matrix',
+        score: computeMatrixScore(),
+        completionNote: matrixRows.length ? `${matrixRows.length} audience rows mapped.` : 'Add audience rows to start.',
+        tips: ['Add segment insight', 'Add platform environments', 'Add triggers'],
+        dataFlowNote: 'Audience rows become targets for concepts and production destinations.',
+      };
+    }
+    if (workspaceView === 'concepts') {
+      return {
+        title: 'Concepts',
+        score: computeConceptScore(),
+        completionNote: concepts.length ? `${concepts.length} concepts captured.` : 'Draft or upload concepts.',
+        tips: ['Map to audience rows', 'Add visual description', 'Define asset type'],
+        dataFlowNote: 'Concepts drive production jobs and populate feed variants.',
+      };
+    }
+    if (workspaceView === 'production') {
+      return {
+        title: 'Production',
+        score: computeProductionScore(),
+        completionNote: builderJobs.length ? `${builderJobs.length} jobs ready for build.` : 'Generate a production plan.',
+        tips: ['Confirm specs', 'Add requirements', 'Set status'],
+        dataFlowNote: 'Production outputs feed into the final content feed export.',
+      };
+    }
+    return {
+      title: 'Content Feed',
+      score: computeFeedScore(),
+      completionNote: feedRows.length ? `${feedRows.length} feed rows mapped.` : 'Add feed rows and mappings.',
+      tips: ['Map fields', 'Validate destination formats', 'Export feed'],
+      dataFlowNote: 'Feed uses production outputs and audience mappings for activation.',
+    };
+  })();
   const [moodBoardConceptIds, setMoodBoardConceptIds] = useState<string[]>([]);
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
   const [brandAssets, setBrandAssets] = useState<string[]>([]);
@@ -1433,6 +1759,14 @@ export default function Home() {
   };
 
   useEffect(scrollToBottom, [messages]);
+
+  // Handle client-side mounting to avoid hydration mismatches with localStorage values
+  useEffect(() => {
+    setMounted(true);
+    const storedDemoMode = loadFromStorage('demoMode', false);
+    setDemoMode(storedDemoMode);
+  }, []);
+
   useEffect(() => {
     if (workspaceView !== 'concepts' || rightTab !== 'board') {
       setConceptDetail(null);
@@ -1558,6 +1892,279 @@ export default function Home() {
     a.download = 'asset_feed_brief.txt';
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // ============================================================================
+  // DCO PLATFORM EXPORT FUNCTIONS
+  // ============================================================================
+  
+  const [showDcoExport, setShowDcoExport] = useState(false);
+  const [dcoExportPlatform, setDcoExportPlatform] = useState<'flashtalking' | 'innovid' | 'celtra' | 'storyteq'>('flashtalking');
+  const [dcoExportValidation, setDcoExportValidation] = useState<{ valid: boolean; errors: string[]; warnings: string[] }>({ valid: true, errors: [], warnings: [] });
+
+  // Validate production jobs for DCO export
+  const validateDcoExport = (platform: string): { valid: boolean; errors: string[]; warnings: string[] } => {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    
+    if (builderJobs.length === 0) {
+      errors.push('No production jobs to export. Generate a production plan first.');
+      return { valid: false, errors, warnings };
+    }
+
+    builderJobs.forEach((job, idx) => {
+      const jobRef = job.ticket_number || `Job ${idx + 1}`;
+      
+      // Check required fields
+      if (!job.creative_concept) errors.push(`${jobRef}: Missing creative concept name.`);
+      if (!job.asset_type) errors.push(`${jobRef}: Missing asset type.`);
+      if (job.destinations.length === 0) warnings.push(`${jobRef}: No destinations specified.`);
+      if (!job.technical_summary || job.technical_summary.includes('Spec not set')) {
+        warnings.push(`${jobRef}: Spec not fully defined.`);
+      }
+
+      // Platform-specific validation
+      if (platform === 'flashtalking' || platform === 'innovid') {
+        if (job.asset_type === 'video' && !job.technical_summary.includes('x')) {
+          warnings.push(`${jobRef}: Video assets should have dimensions specified.`);
+        }
+      }
+    });
+
+    return { valid: errors.length === 0, errors, warnings };
+  };
+
+  // Export to Flashtalking CSV format
+  const exportFlashtalkingCsv = () => {
+    const campaignName = briefState.campaign_name || 'Campaign';
+    const now = new Date().toISOString().split('T')[0];
+    
+    // Flashtalking CSV headers (standard feed format)
+    const headers = [
+      'Ad Name',
+      'Concept ID',
+      'Creative Type',
+      'Width',
+      'Height',
+      'Duration',
+      'Platform',
+      'Placement',
+      'Targeting',
+      'Click URL',
+      'Impression Tracking',
+      'Ticket Number',
+      'Status',
+      'Priority',
+      'Assignee',
+      'Due Date',
+      'Notes',
+    ];
+
+    const rows = builderJobs.map((job) => {
+      // Parse dimensions from technical summary
+      const dimMatch = job.technical_summary.match(/(\d+)x(\d+)/);
+      const width = dimMatch ? dimMatch[1] : '';
+      const height = dimMatch ? dimMatch[2] : '';
+      const durMatch = job.technical_summary.match(/(\d+)s/);
+      const duration = durMatch ? durMatch[1] : '';
+
+      return [
+        `${campaignName}_${job.creative_concept}_${job.asset_type}`,
+        job.job_id,
+        job.asset_type.toUpperCase(),
+        width,
+        height,
+        duration,
+        job.destinations.map(d => d.platform_name).join('; '),
+        job.destinations.map(d => d.format_name).join('; '),
+        job.destinations.map(d => d.special_notes).filter(Boolean).join('; '),
+        '', // Click URL - to be filled
+        '', // Impression Tracking - to be filled
+        job.ticket_number || '',
+        job.status,
+        job.priority || 'medium',
+        job.assignee || '',
+        job.due_date || '',
+        job.destinations.map(d => d.special_notes).filter(Boolean).join('; '),
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `flashtalking_feed_${campaignName.replace(/\s+/g, '_')}_${now}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toastSuccess('Flashtalking export complete', `Exported ${builderJobs.length} assets to CSV.`);
+    setShowDcoExport(false);
+  };
+
+  // Export to Innovid JSON format
+  const exportInnovidJson = () => {
+    const campaignName = briefState.campaign_name || 'Campaign';
+    const now = new Date().toISOString();
+    
+    const innovidPayload = {
+      meta: {
+        campaign_name: campaignName,
+        exported_at: now,
+        source: 'ModCon Planning Tool',
+        version: '1.0',
+      },
+      creatives: builderJobs.map((job) => {
+        // Parse dimensions
+        const dimMatch = job.technical_summary.match(/(\d+)x(\d+)/);
+        const durMatch = job.technical_summary.match(/(\d+)s/);
+        
+        return {
+          creative_id: job.job_id,
+          ticket_number: job.ticket_number,
+          name: `${campaignName}_${job.creative_concept}_${job.asset_type}`,
+          type: job.asset_type,
+          dimensions: dimMatch ? { width: parseInt(dimMatch[1], 10), height: parseInt(dimMatch[2], 10) } : null,
+          duration: durMatch ? parseInt(durMatch[1], 10) : null,
+          placements: job.destinations.map(d => ({
+            platform: d.platform_name,
+            format: d.format_name,
+            spec_id: d.spec_id,
+            notes: d.special_notes,
+          })),
+          workflow: {
+            status: job.status,
+            priority: job.priority || 'medium',
+            assignee: job.assignee || null,
+            due_date: job.due_date || null,
+            revision: job.revision_number || 1,
+          },
+          approval: {
+            status: job.approval_status || 'pending',
+            approver: job.approver || null,
+            approved_at: job.approved_at || null,
+            comments: job.approval_comments || null,
+          },
+          tracking: {
+            click_url: null, // To be filled
+            impression_url: null, // To be filled
+            beacon_urls: [],
+          },
+        };
+      }),
+    };
+
+    const jsonContent = JSON.stringify(innovidPayload, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `innovid_feed_${campaignName.replace(/\s+/g, '_')}_${now.split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toastSuccess('Innovid export complete', `Exported ${builderJobs.length} creatives to JSON.`);
+    setShowDcoExport(false);
+  };
+
+  // Export to Celtra format
+  const exportCeltraJson = () => {
+    const campaignName = briefState.campaign_name || 'Campaign';
+    const now = new Date().toISOString();
+    
+    const celtraPayload = {
+      campaign: {
+        name: campaignName,
+        created: now,
+      },
+      creatives: builderJobs.map((job) => {
+        const dimMatch = job.technical_summary.match(/(\d+)x(\d+)/);
+        return {
+          id: job.job_id,
+          name: job.creative_concept,
+          type: job.asset_type,
+          size: dimMatch ? `${dimMatch[1]}x${dimMatch[2]}` : 'responsive',
+          variants: job.destinations.map(d => ({
+            platform: d.platform_name,
+            placement: d.format_name,
+          })),
+          status: job.status,
+          ticket: job.ticket_number,
+        };
+      }),
+    };
+
+    const jsonContent = JSON.stringify(celtraPayload, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `celtra_feed_${campaignName.replace(/\s+/g, '_')}_${now.split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toastSuccess('Celtra export complete', `Exported ${builderJobs.length} creatives.`);
+    setShowDcoExport(false);
+  };
+
+  // Export to StoryTeq format
+  const exportStorytTeqCsv = () => {
+    const campaignName = briefState.campaign_name || 'Campaign';
+    const now = new Date().toISOString().split('T')[0];
+    
+    // StoryTeq CSV format
+    const headers = ['creative_name', 'template_id', 'size', 'platform', 'headline', 'body', 'cta', 'image_url', 'video_url', 'status', 'ticket'];
+    
+    const rows = builderJobs.map((job) => {
+      const dimMatch = job.technical_summary.match(/(\d+)x(\d+)/);
+      const size = dimMatch ? `${dimMatch[1]}x${dimMatch[2]}` : '';
+      
+      return [
+        `${campaignName}_${job.creative_concept}`,
+        job.template_id || '',
+        size,
+        job.destinations.map(d => d.platform_name).join('; '),
+        '', // headline - to be filled
+        '', // body - to be filled
+        '', // cta - to be filled
+        '', // image_url - to be filled
+        '', // video_url - to be filled
+        job.status,
+        job.ticket_number || '',
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `storyteq_feed_${campaignName.replace(/\s+/g, '_')}_${now}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toastSuccess('StoryTeq export complete', `Exported ${builderJobs.length} creatives.`);
+    setShowDcoExport(false);
+  };
+
+  const handleDcoExport = () => {
+    const validation = validateDcoExport(dcoExportPlatform);
+    setDcoExportValidation(validation);
+    
+    if (!validation.valid) {
+      return; // Show errors in modal
+    }
+
+    switch (dcoExportPlatform) {
+      case 'flashtalking':
+        exportFlashtalkingCsv();
+        break;
+      case 'innovid':
+        exportInnovidJson();
+        break;
+      case 'celtra':
+        exportCeltraJson();
+        break;
+      case 'storyteq':
+        exportStorytTeqCsv();
+        break;
+    }
   };
 
   const addCustomFeedField = () => {
@@ -1839,6 +2446,29 @@ export default function Home() {
           throw new Error(serverError || `Brief request failed (${res.status})`);
         }
         setMessages([...newHistory, { role: 'assistant', content: data.reply || '' }]);
+        
+        // Apply any extracted brief fields from the AI response
+        if (data.extracted_fields && typeof data.extracted_fields === 'object') {
+          const extracted = data.extracted_fields as Record<string, string>;
+          if (Object.keys(extracted).length > 0) {
+            // Update briefState with extracted values
+            setBriefState((prev) => ({
+              ...prev,
+              ...(extracted.campaign_name && { campaign_name: extracted.campaign_name }),
+              ...(extracted.smp && { smp: extracted.smp }),
+              ...(extracted.primary_audience && { audiences: [extracted.primary_audience, ...(prev.audiences?.slice(1) || [])] }),
+            }));
+            
+            // Update previewPlan with extracted values
+            setPreviewPlan((prev: any) => ({
+              ...prev,
+              ...(extracted.campaign_name && { campaign_name: extracted.campaign_name }),
+              ...(extracted.smp && { single_minded_proposition: extracted.smp }),
+              ...(extracted.primary_audience && { primary_audience: extracted.primary_audience }),
+              ...(extracted.objective && { objective: extracted.objective }),
+            }));
+          }
+        }
         // Quality is computed locally in real-time from the current brief fields.
       } else {
         const res = await fetch(`${API_BASE_URL}/chat`, {
@@ -1911,6 +2541,7 @@ export default function Home() {
           `Here is a small sample of the rows:\n${sampleJson}\n` +
           `Please use this audience structure when shaping the brief and content matrix.`;
 
+        addActivity(`Uploaded audience matrix (${file.name})`);
         await sendMessage(userMessage);
       } else {
         const res = await fetch(`${API_BASE_URL}/upload`, {
@@ -1937,17 +2568,19 @@ export default function Home() {
             `Here is a small sample of the rows:\n${sampleJson}\n` +
             `Please use this audience structure when shaping the brief and content matrix.`;
 
+          addActivity(`Uploaded audience matrix (${data.filename})`);
           await sendMessage(userMessage);
         } else {
           const preview = (data.content || '').substring(0, 200);
           const userMessage = `I just uploaded a file named "${data.filename}". Content preview: ${preview}...`;
+          addActivity(`Uploaded file (${data.filename})`);
           await sendMessage(userMessage);
         }
       }
     } catch (error) {
       console.error("Upload failed", error);
       if (!demoMode) {
-        alert("Failed to upload file");
+        toastError('Upload failed', 'Failed to upload file.');
       }
       setLoading(false);
     }
@@ -1956,6 +2589,7 @@ export default function Home() {
   };
 
   const downloadExport = async (format: 'pdf' | 'txt' | 'json') => {
+    setExportLoadingFormat(format);
     // Keep previewPlan.content_matrix in sync with local editable grid
     const planToSend = {
       ...previewPlan,
@@ -1982,64 +2616,146 @@ export default function Home() {
     };
 
     if (format === 'json') {
-        const blob = new Blob([JSON.stringify(planToSend, null, 2)], { type: 'application/json' });
+        // Enhanced JSON export with metadata
+        const exportData = {
+          _metadata: {
+            exported_at: new Date().toISOString(),
+            version: '1.0',
+            tool: 'ModCon Planning Tool',
+          },
+          brief: {
+            campaign_name: planToSend.campaign_name || 'Untitled',
+            single_minded_proposition: planToSend.single_minded_proposition || null,
+            primary_audience: planToSend.primary_audience || null,
+            objective: planToSend.objective || null,
+            narrative_brief: planToSend.narrative_brief || null,
+            kpis: planToSend.kpis || [],
+            known_constraints: planToSend.known_constraints || [],
+          },
+          workflow: {
+            job_tool: planToSend.workflow_job_tool || null,
+            job_code: planToSend.job_code || null,
+          },
+          content_matrix: planToSend.content_matrix || [],
+          concepts: planToSend.concepts || [],
+          quality_metrics: {
+            completion_score: briefCompletionScore,
+            quality_score: briefQualityScore,
+            gaps: briefQualityGaps,
+          },
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'brief.json';
+        const timestamp = new Date().toISOString().split('T')[0];
+        const safeName = (planToSend.campaign_name || 'brief').replace(/[^a-zA-Z0-9]/g, '_');
+        a.download = `${safeName}_${timestamp}.json`;
         a.click();
+        toastSuccess('Export Complete', 'Brief exported as JSON');
+      addActivity('Exported brief (JSON)');
+        setExportLoadingFormat(null);
         return;
     }
 
     // In demo mode, generate a simple text export client-side for TXT/PDF
     if (demoMode) {
       const lines: string[] = [];
-      // Workflow Job Tool and Job Code at the top
+      const divider = '═'.repeat(60);
+      const sectionDivider = '─'.repeat(40);
+      
+      // Header
+      lines.push(divider);
+      lines.push(`  INTELLIGENT CONTENT BRIEF`);
+      lines.push(`  ${planToSend.campaign_name ?? 'Untitled Campaign'}`);
+      lines.push(divider);
+      lines.push('');
+      lines.push(`Exported: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}`);
+      lines.push('');
+      
+      // Workflow Info
       if (planToSend.workflow_job_tool || planToSend.job_code) {
+        lines.push('📋 WORKFLOW ADMINISTRATION');
+        lines.push(sectionDivider);
         if (planToSend.workflow_job_tool) {
-          lines.push(`Workflow Job Tool: ${planToSend.workflow_job_tool}`);
+          lines.push(`   Tool:     ${planToSend.workflow_job_tool}`);
         }
         if (planToSend.job_code) {
-          lines.push(`Job Code: ${planToSend.job_code}`);
+          lines.push(`   Job Code: ${planToSend.job_code}`);
         }
         lines.push('');
       }
-      lines.push(`Production Master Plan: ${planToSend.campaign_name ?? 'Untitled'}`);
-      lines.push('==================================================');
+      
+      // Brief Fields
+      lines.push('📝 BRIEF FIELDS');
+      lines.push(sectionDivider);
+      lines.push(`   Campaign Name:  ${planToSend.campaign_name ?? 'Not specified'}`);
+      lines.push(`   SMP:            ${planToSend.single_minded_proposition ?? 'Not specified'}`);
+      lines.push(`   Primary Audience: ${planToSend.primary_audience ?? 'Not specified'}`);
+      lines.push(`   Objective:      ${planToSend.objective ?? 'Not specified'}`);
       lines.push('');
-      lines.push(`SMP: ${planToSend.single_minded_proposition ?? 'N/A'}`);
-      lines.push('');
-      if (planToSend.narrative_brief) {
-        lines.push('Narrative Brief:');
-        lines.push(planToSend.narrative_brief);
+      
+      // Quality Score
+      if (briefQualityScore || briefCompletionScore) {
+        lines.push('📊 QUALITY METRICS');
+        lines.push(sectionDivider);
+        if (briefQualityScore) lines.push(`   Quality Score:     ${briefQualityScore.toFixed(1)}/10`);
+        if (briefCompletionScore) lines.push(`   Completion Score:  ${briefCompletionScore.toFixed(1)}/10`);
+        if (briefQualityGaps.length > 0) {
+          lines.push(`   Gaps:              ${briefQualityGaps.join(', ')}`);
+        }
         lines.push('');
       }
-      lines.push('Strategy Matrix (preview):');
-      (planToSend.content_matrix || []).forEach((row: any) => {
-        lines.push(
-          `- asset=${row.asset_id} | audience=${row.audience_segment} | stage=${row.funnel_stage} | trigger=${row.trigger} | channel=${row.channel} | format=${row.format} | message=${row.message}`,
-        );
-      });
-      if (planToSend.concepts && planToSend.concepts.length) {
+      
+      // Narrative Brief
+      if (planToSend.narrative_brief) {
+        lines.push('📖 NARRATIVE BRIEF');
+        lines.push(sectionDivider);
+        lines.push(planToSend.narrative_brief.split('\n').map((l: string) => `   ${l}`).join('\n'));
         lines.push('');
-        lines.push('Concepts:');
-        (planToSend.concepts || []).forEach((c: any) => {
-          lines.push(`- [${c.asset_id}] ${c.title}: ${c.description}`);
+      }
+      
+      // Strategy Matrix
+      if (planToSend.content_matrix && planToSend.content_matrix.length > 0) {
+        lines.push('🎯 CONTENT MATRIX');
+        lines.push(sectionDivider);
+        (planToSend.content_matrix || []).forEach((row: any, idx: number) => {
+          lines.push(`   ${idx + 1}. ${row.audience_segment || 'All'} → ${row.channel || 'TBD'}`);
+          lines.push(`      Stage: ${row.funnel_stage || 'N/A'} | Format: ${row.format || 'N/A'}`);
+          if (row.message) lines.push(`      Message: ${row.message}`);
+          lines.push('');
         });
       }
+      
+      // Concepts
+      if (planToSend.concepts && planToSend.concepts.length > 0) {
+        lines.push('💡 CREATIVE CONCEPTS');
+        lines.push(sectionDivider);
+        (planToSend.concepts || []).forEach((c: any, idx: number) => {
+          lines.push(`   ${idx + 1}. ${c.title || 'Untitled Concept'}`);
+          if (c.description) lines.push(`      ${c.description}`);
+          lines.push('');
+        });
+      }
+      
+      // Footer
+      lines.push(divider);
+      lines.push('  Generated by ModCon Planning Tool');
+      lines.push(divider);
+      
       const text = lines.join('\n') + '\n';
-      const mime =
-        (format as string) === 'json'
-          ? 'application/json'
-          : (format as string) === 'pdf'
-          ? 'application/pdf'
-          : 'text/plain';
+      const mime = format === 'pdf' ? 'application/pdf' : 'text/plain';
       const blob = new Blob([text], { type: mime });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `brief.${format}`;
+      const timestamp = new Date().toISOString().split('T')[0];
+      const safeName = (planToSend.campaign_name || 'brief').replace(/[^a-zA-Z0-9]/g, '_');
+      a.download = `${safeName}_${timestamp}.${format}`;
       a.click();
+      toastSuccess('Export Complete', `Brief exported as ${format.toUpperCase()}`);
+        addActivity(`Exported brief (${format.toUpperCase()})`);
+      setExportLoadingFormat(null);
       return;
     }
 
@@ -2049,18 +2765,42 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan: planToSend }),
       });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || `Export failed with status ${res.status}`);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `brief.${format}`;
       a.click();
+      toastSuccess('Export Complete', `Brief exported as ${format.toUpperCase()}`);
+      addActivity(`Exported brief (${format.toUpperCase()})`);
     } catch (error) {
       console.error("Export failed", error);
+      const message = error instanceof Error ? error.message : 'Export failed';
+      toastError('Export failed', message);
+    } finally {
+      setExportLoadingFormat(null);
     }
   };
 
   const switchWorkspace = (view: 'brief' | 'matrix' | 'concepts' | 'production' | 'feed') => {
+    if ((view === 'production' || view === 'feed') && !isProductionReady) {
+      toastWarning(
+        'Brief not production-ready',
+        `Reach ${PRODUCTION_READY_THRESHOLD}/10 before moving to ${view === 'production' ? 'Production' : 'Feed'}.`,
+      );
+      return;
+    }
+
+    if (view === 'concepts' && matrixRows.length === 0) {
+      toastWarning('Missing audience matrix', 'Add at least one audience row before concepting.');
+      setWorkspaceView('matrix');
+      return;
+    }
+
     setWorkspaceView(view);
 
     if (view === 'concepts') {
@@ -2271,12 +3011,12 @@ export default function Home() {
         ),
       );
       console.error('Error generating asset:', error);
-      // Show error alert to user
-      alert(`Failed to generate ${concept.kind}: ${errorMessage}`);
+      toastError(`Generation failed`, `Failed to generate ${concept.kind}: ${errorMessage}`);
     }
   }
 
   async function draftConceptsFromBrief() {
+    setConceptDraftLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/concepts/generate`, {
         method: 'POST',
@@ -2284,7 +3024,9 @@ export default function Home() {
         body: JSON.stringify({ brief: briefState }),
       });
       if (!res.ok) {
-        console.error('Failed to draft concepts from brief', await res.text());
+        const message = await res.text();
+        console.error('Failed to draft concepts from brief', message);
+        toastError('Drafting failed', message || 'Unable to draft concepts from brief.');
         return;
       }
       const data = await res.json();
@@ -2305,10 +3047,17 @@ export default function Home() {
             status: 'idle' as const,
             generatedPrompt: undefined,
           }));
+        if (mapped.length) {
+          toastSuccess('Concepts drafted', `${mapped.length} new concepts added to the canvas.`);
+          addActivity(`Drafted ${mapped.length} concepts from brief`);
+        }
         return [...prev, ...mapped];
       });
     } catch (e) {
       console.error('Error calling /concepts/generate', e);
+      toastError('Drafting failed', 'Unable to draft concepts. Please try again.');
+    } finally {
+      setConceptDraftLoading(false);
     }
   }
 
@@ -2408,6 +3157,41 @@ export default function Home() {
       ];
       setProductionBatch(demoBatch);
       setProductionAssets(demoAssets);
+      
+      // Use campaign name from brief for demo assets
+      const campaignName = briefState.campaign_name || demoConcept?.title || 'Campaign';
+      const now = new Date().toISOString();
+      
+      // Also populate builderJobs so the board displays the assets
+      let localTicketCounter = ticketCounter;
+      const demoBuilderJobs: ProductionJobRow[] = demoAssets.map((asset, idx) => {
+        localTicketCounter += 1;
+        const ticketNum = `PROD-${new Date().getFullYear()}-${String(localTicketCounter).padStart(3, '0')}`;
+        return {
+          job_id: asset.id,
+          ticket_number: ticketNum,
+          creative_concept: campaignName,
+          asset_type: asset.asset_type || 'video',
+          destinations: [{
+            platform_name: asset.platform,
+            spec_id: asset.spec_details?.id || '',
+            format_name: asset.placement,
+            special_notes: asset.visual_directive || '',
+          }],
+          technical_summary: `${asset.spec_dimensions} ${asset.spec_details?.format_name || asset.asset_type}`,
+          status: asset.status || 'Pending',
+          priority: idx === 0 ? 'high' : 'medium',
+          approval_status: 'pending' as const,
+          revision_number: 1,
+          created_at: now,
+          updated_at: now,
+          is_feed: false,
+        };
+      });
+      setTicketCounter(localTicketCounter);
+      saveToStorage('ticketCounter', localTicketCounter);
+      setBuilderJobs(demoBuilderJobs);
+      addActivity(`Production plan generated (demo, ${demoBuilderJobs.length} jobs)`);
       setWorkspaceView('production');
     };
 
@@ -2472,6 +3256,41 @@ export default function Home() {
       const data = await res.json();
       setProductionBatch(data.batch || null);
       setProductionAssets(data.assets || []);
+      
+      // Also populate builderJobs from the returned assets
+      const assets = data.assets || [];
+      if (assets.length > 0) {
+        const now = new Date().toISOString();
+        let localTicketCounter = ticketCounter;
+        const jobs: ProductionJobRow[] = assets.map((asset: ProductionAsset, idx: number) => {
+          localTicketCounter += 1;
+          const ticketNum = `PROD-${new Date().getFullYear()}-${String(localTicketCounter).padStart(3, '0')}`;
+          return {
+            job_id: asset.id,
+            ticket_number: ticketNum,
+            creative_concept: conceptPayload.name,
+            asset_type: asset.asset_type || 'video',
+            destinations: [{
+              platform_name: asset.platform,
+              spec_id: asset.spec_details?.id || '',
+              format_name: asset.placement,
+              special_notes: asset.visual_directive || '',
+            }],
+            technical_summary: `${asset.spec_dimensions} ${asset.spec_details?.format_name || asset.asset_type}`,
+            status: asset.status || 'Pending',
+            priority: idx === 0 ? 'high' : 'medium',
+            approval_status: 'pending' as const,
+            revision_number: 1,
+            created_at: now,
+            updated_at: now,
+            is_feed: false,
+          };
+        });
+        setTicketCounter(localTicketCounter);
+        saveToStorage('ticketCounter', localTicketCounter);
+        setBuilderJobs(jobs);
+        addActivity(`Production plan generated (${jobs.length} jobs)`);
+      }
       setWorkspaceView('production');
     } catch (e: any) {
       console.error('Error generating production plan', e);
@@ -2617,6 +3436,79 @@ export default function Home() {
     ];
   };
 
+  // Platform validation for production assets
+  type PlatformWarning = {
+    type: 'error' | 'warning' | 'info';
+    message: string;
+  };
+
+  const validatePlatformSpec = (job: ProductionJobRow): PlatformWarning[] => {
+    const warnings: PlatformWarning[] = [];
+    const assetType = (job.asset_type || '').toLowerCase();
+    const summary = (job.technical_summary || '').toLowerCase();
+    
+    // Check for missing destinations
+    if (!job.destinations.length) {
+      warnings.push({ type: 'warning', message: 'No destination platform selected' });
+    }
+    
+    // Platform-specific validations
+    job.destinations.forEach((dest) => {
+      const platform = (dest.platform_name || '').toLowerCase();
+      const format = (dest.format_name || '').toLowerCase();
+      
+      // TikTok validations
+      if (platform.includes('tiktok')) {
+        if (assetType !== 'video') {
+          warnings.push({ type: 'error', message: 'TikTok requires video content' });
+        }
+        if (!summary.includes('9:16') && !summary.includes('1080x1920')) {
+          warnings.push({ type: 'warning', message: 'TikTok performs best with 9:16 vertical video' });
+        }
+      }
+      
+      // YouTube Shorts validations
+      if (platform.includes('youtube') && format.includes('short')) {
+        if (!summary.includes('9:16') && !summary.includes('1080x1920')) {
+          warnings.push({ type: 'warning', message: 'YouTube Shorts require 9:16 vertical format' });
+        }
+      }
+      
+      // Meta Stories/Reels validations
+      if (platform.includes('meta') && (format.includes('stor') || format.includes('reel'))) {
+        if (!summary.includes('9:16') && !summary.includes('1080x1920')) {
+          warnings.push({ type: 'warning', message: 'Stories/Reels perform best in 9:16 vertical' });
+        }
+      }
+      
+      // LinkedIn validations
+      if (platform.includes('linkedin')) {
+        if (assetType === 'video' && !summary.includes('1:1') && !summary.includes('16:9')) {
+          warnings.push({ type: 'info', message: 'LinkedIn video supports 1:1 or 16:9 aspect ratios' });
+        }
+      }
+      
+      // Display validations
+      if (platform.includes('display') || platform.includes('dv360')) {
+        if (assetType === 'video' && !summary.includes('html5')) {
+          warnings.push({ type: 'info', message: 'Display ads typically use HTML5 or static images' });
+        }
+      }
+    });
+    
+    // Check for missing assignee on high/urgent priority
+    if ((job.priority === 'high' || job.priority === 'urgent') && !job.assignee) {
+      warnings.push({ type: 'warning', message: 'High priority asset without assignee' });
+    }
+    
+    // Check for missing due date
+    if (job.priority === 'urgent' && !job.due_date) {
+      warnings.push({ type: 'warning', message: 'Urgent asset without due date' });
+    }
+    
+    return warnings;
+  };
+
   const updateJobFeedMeta = (
     jobId: string,
     field: 'feed_template' | 'template_id' | 'feed_id' | 'feed_asset_id' | 'production_details',
@@ -2636,6 +3528,93 @@ export default function Home() {
     status: 'Pending' | 'In_Progress' | 'Review' | 'Approved' | string,
   ) => {
     setBuilderJobs((prev) => prev.map((job) => (job.job_id === jobId ? { ...job, status } : job)));
+  };
+
+  const updateJobAssignee = (jobId: string, assignee: string) => {
+    setBuilderJobs((prev) => prev.map((job) => (job.job_id === jobId ? { ...job, assignee } : job)));
+  };
+
+  const updateJobDueDate = (jobId: string, due_date: string) => {
+    setBuilderJobs((prev) => prev.map((job) => (job.job_id === jobId ? { ...job, due_date } : job)));
+  };
+
+  const updateJobPriority = (jobId: string, priority: 'low' | 'medium' | 'high' | 'urgent') => {
+    setBuilderJobs((prev) => prev.map((job) => (job.job_id === jobId ? { ...job, priority } : job)));
+  };
+
+  const updateJobApprovalStatus = (jobId: string, approval_status: 'pending' | 'submitted' | 'approved' | 'revision_requested' | 'rejected') => {
+    const now = new Date().toISOString();
+    setBuilderJobs((prev) => prev.map((job) => {
+      if (job.job_id !== jobId) return job;
+      const updates: Partial<ProductionJobRow> = { approval_status, updated_at: now };
+      if (approval_status === 'approved') updates.approved_at = now;
+      if (approval_status === 'revision_requested') updates.revision_number = (job.revision_number || 1) + 1;
+      return { ...job, ...updates };
+    }));
+  };
+
+  const updateJobReviewer = (jobId: string, reviewer: string) => {
+    setBuilderJobs((prev) => prev.map((job) => (job.job_id === jobId ? { ...job, reviewer, updated_at: new Date().toISOString() } : job)));
+  };
+
+  const updateJobApprover = (jobId: string, approver: string) => {
+    setBuilderJobs((prev) => prev.map((job) => (job.job_id === jobId ? { ...job, approver, updated_at: new Date().toISOString() } : job)));
+  };
+
+  const updateJobApprovalComments = (jobId: string, approval_comments: string) => {
+    setBuilderJobs((prev) => prev.map((job) => (job.job_id === jobId ? { ...job, approval_comments, updated_at: new Date().toISOString() } : job)));
+  };
+
+  const updateJobCostEstimate = (jobId: string, cost_estimate: number) => {
+    setBuilderJobs((prev) => prev.map((job) => (job.job_id === jobId ? { ...job, cost_estimate, updated_at: new Date().toISOString() } : job)));
+  };
+
+  const updateJobEstimatedHours = (jobId: string, estimated_hours: number) => {
+    setBuilderJobs((prev) => prev.map((job) => (job.job_id === jobId ? { ...job, estimated_hours, updated_at: new Date().toISOString() } : job)));
+  };
+
+  const toggleJobSelection = (jobId: string) => {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) {
+        next.delete(jobId);
+      } else {
+        next.add(jobId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllJobs = () => {
+    setSelectedJobIds(new Set(builderJobs.map((job) => job.job_id)));
+  };
+
+  const clearJobSelection = () => {
+    setSelectedJobIds(new Set());
+  };
+
+  const bulkUpdateStatus = (status: 'Pending' | 'In_Progress' | 'Review' | 'Approved') => {
+    setBuilderJobs((prev) =>
+      prev.map((job) => (selectedJobIds.has(job.job_id) ? { ...job, status } : job))
+    );
+    toastSuccess('Status updated', `${selectedJobIds.size} jobs updated to ${status === 'In_Progress' ? 'In Progress' : status === 'Review' ? 'In Review' : status}`);
+    clearJobSelection();
+  };
+
+  const bulkUpdatePriority = (priority: 'low' | 'medium' | 'high' | 'urgent') => {
+    setBuilderJobs((prev) =>
+      prev.map((job) => (selectedJobIds.has(job.job_id) ? { ...job, priority } : job))
+    );
+    toastSuccess('Priority updated', `${selectedJobIds.size} jobs set to ${priority} priority`);
+    clearJobSelection();
+  };
+
+  const bulkUpdateAssignee = (assignee: string) => {
+    setBuilderJobs((prev) =>
+      prev.map((job) => (selectedJobIds.has(job.job_id) ? { ...job, assignee } : job))
+    );
+    toastSuccess('Assignee updated', `${selectedJobIds.size} jobs assigned to ${assignee || 'unassigned'}`);
+    clearJobSelection();
   };
 
   const addJobCopyField = (jobId: string) => {
@@ -2771,6 +3750,8 @@ export default function Home() {
           production_details?: string;
         };
       } = {};
+      const now = new Date().toISOString();
+      let localTicketCounter = ticketCounter;
       productionMatrixRows.forEach((row, idx) => {
         const rowConcept = concepts.find((c) => c.id === row.concept_id);
         const conceptLabel =
@@ -2855,13 +3836,23 @@ export default function Home() {
           const inferredAssetType = hasDestinations ? inferAssetType(spec, dests) : 'asset';
           const destinationNotice = hasDestinations ? '' : ' | No destination selected';
 
+          // Generate ticket number
+          localTicketCounter += 1;
+          const ticketNum = `PROD-${new Date().getFullYear()}-${String(localTicketCounter).padStart(3, '0')}`;
+
           jobs.push({
             job_id: jobId,
+            ticket_number: ticketNum,
             creative_concept: conceptLabel,
             asset_type: inferredAssetType,
             destinations: jobDestinations,
             technical_summary: `${specLabel}${metaSuffix}${destinationNotice}`,
             status: 'Pending',
+            priority: idx === 0 ? 'high' : 'medium',
+            approval_status: 'pending' as const,
+            revision_number: 1,
+            created_at: now,
+            updated_at: now,
             is_feed: row.is_feed,
             feed_template: row.feed_template,
             template_id: row.template_id,
@@ -2872,6 +3863,8 @@ export default function Home() {
           });
         });
       });
+      setTicketCounter(localTicketCounter);
+      saveToStorage('ticketCounter', localTicketCounter);
       setBuilderJobs(jobs);
       setJobFeedMeta(nextJobFeedMeta);
       setBuilderError(null);
@@ -2937,7 +3930,7 @@ export default function Home() {
     const key: BriefFieldKey = derivedKey || `field_${briefFields.length + 1}`;
 
     if (briefFields.some((f) => f.key === key)) {
-      alert('A brief field with this name already exists.');
+      toastWarning('Duplicate field', 'A brief field with this name already exists.');
       return;
     }
 
@@ -3082,6 +4075,34 @@ export default function Home() {
     setBriefCompletionScore((prev) => (prev === score ? prev : score));
     setBriefCompletionGaps((prev) => (prev.join('|') === gaps.join('|') ? prev : gaps));
   }, [briefState, previewPlan]);
+
+  // ---- State Persistence Effects ----
+  // Persist demoMode to localStorage
+  useEffect(() => {
+    saveToStorage('demoMode', demoMode);
+  }, [demoMode]);
+
+  // Persist briefState to localStorage (debounced to avoid excessive writes)
+  useEffect(() => {
+    setSaveStatus('saving');
+    const timer = setTimeout(() => {
+      saveToStorage('briefState', briefState);
+      setSaveStatus('saved');
+      setLastSavedAt(new Date().toLocaleTimeString());
+      // Reset to idle after showing "saved" briefly
+      const resetTimer = setTimeout(() => setSaveStatus('idle'), 2000);
+      return () => clearTimeout(resetTimer);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [briefState]);
+
+  // Persist previewPlan to localStorage (debounced)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      saveToStorage('previewPlan', previewPlan);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [previewPlan]);
 
   // ECD-quality scoring agent (debounced) — runs only when not in demo mode.
   useEffect(() => {
@@ -3240,6 +4261,13 @@ export default function Home() {
         },
       ]);
       setLoading(false);
+      
+      // Set demo-mode quality score for the comprehensive brief
+      setBriefQualityScore(8.5);
+      setBriefQualityGaps([]);
+      setBriefQualityRationale(
+        'This brief provides a strong SMP, well-defined audience segments, clear proof points, and modular content direction. Production-ready for ModCon workflow.'
+      );
     }, 850);
   }
 
@@ -3258,7 +4286,7 @@ export default function Home() {
     const key = derivedKey || `field_${matrixFields.length + 1}`;
 
     if (matrixFields.some((f) => f.key === key)) {
-      alert('A column with this name already exists.');
+      toastWarning('Duplicate column', 'A column with this name already exists.');
       return;
     }
 
@@ -3284,7 +4312,12 @@ export default function Home() {
   function handleBrandAssetChange(e: any) {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    const names = files.map((f: File) => f.name);
+    const validFiles = files.filter((file: File) => !isFileTooLarge(file, 'Brand assets'));
+    if (!validFiles.length) {
+      e.target.value = '';
+      return;
+    }
+    const names = validFiles.map((f: File) => f.name);
     setBrandAssets((prev) => [...prev, ...names]);
     setMessages((prev) => [
       ...prev,
@@ -3294,6 +4327,7 @@ export default function Home() {
         content: 'Brand assets loaded. I will use these as visual references when drafting concepts and prompts.',
       },
     ]);
+    addActivity(`Uploaded brand assets (${names.length})`);
     e.target.value = '';
   }
 
@@ -3308,7 +4342,12 @@ export default function Home() {
   function handleConceptMediaChange(e: any) {
     const files: File[] = Array.from(e.target.files || []);
     if (!files.length) return;
-    const newConcepts: Concept[] = files.map((file, idx) => {
+    const validFiles = files.filter((file) => !isFileTooLarge(file, 'Media uploads'));
+    if (!validFiles.length) {
+      e.target.value = '';
+      return;
+    }
+    const newConcepts: Concept[] = validFiles.map((file, idx) => {
       const url = URL.createObjectURL(file);
       const type = file.type.startsWith('video')
         ? 'video'
@@ -3338,12 +4377,17 @@ export default function Home() {
         content: 'Media added to concept board. They will guide prompts and be available for production mapping.',
       },
     ]);
+    addActivity(`Uploaded media files (${files.length})`);
     e.target.value = '';
   }
 
   function handleConceptFileChange(e: any) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (isFileTooLarge(file, 'Concept uploads')) {
+      e.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
@@ -3369,7 +4413,7 @@ export default function Home() {
           });
         });
         if (!newConcepts.length) {
-          alert('No concepts found in the file. Please upload a JSON array of concepts.');
+          toastWarning('No concepts found', 'Please upload a JSON array of concepts.');
           return;
         }
         setConcepts((prev) => [...prev, ...newConcepts]);
@@ -3379,9 +4423,10 @@ export default function Home() {
           { role: 'user', content: `Uploaded ${newConcepts.length} concepts from file "${file.name}".` },
           { role: 'assistant', content: 'Added uploaded concepts to the board. You can map them to specs and production next.' },
         ]);
+        addActivity(`Imported concepts (${newConcepts.length})`);
       } catch (err) {
         console.error('Error parsing concept file', err);
-        alert('Could not read file. Please upload a JSON file with an array of concept objects.');
+        toastError('File read failed', 'Please upload a JSON file with an array of concept objects.');
       } finally {
         e.target.value = '';
       }
@@ -3421,7 +4466,7 @@ export default function Home() {
 
   function saveCurrentMatrixToLibrary() {
     if (!matrixRows.length) {
-      alert('Add at least one row to the content matrix before saving to the library.');
+      toastWarning('Nothing to save', 'Add at least one row to the content matrix before saving to the library.');
       return;
     }
     const name = window.prompt('Name this strategy matrix template:', 'New Strategy Matrix');
@@ -3485,6 +4530,10 @@ export default function Home() {
   function handleAudienceFileChange(e: any) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (isFileTooLarge(file, 'Audience imports')) {
+      e.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
@@ -3500,9 +4549,10 @@ export default function Home() {
         setAudienceImportRows(jsonRows as any[]);
         setAudienceImportMapping(buildDefaultAudienceMapping(headers));
         setAudienceImportOpen(true);
+        addActivity(`Audience import loaded (${jsonRows.length} rows)`);
       } catch (err) {
         console.error('Error parsing audience file', err);
-        alert('Could not read file. Please upload a CSV or Excel with a header row.');
+        toastError('File read failed', 'Please upload a CSV or Excel with a header row.');
       } finally {
         e.target.value = '';
       }
@@ -3529,7 +4579,7 @@ export default function Home() {
       }
     });
     if (!mappedRows.length) {
-      alert('No rows were mapped. Please adjust the field mapping.');
+      toastWarning('No rows mapped', 'Please adjust the field mapping.');
       return;
     }
     setMatrixRows((prev) => [...prev, ...mappedRows]);
@@ -3544,6 +4594,185 @@ export default function Home() {
     setAudienceImportRows([]);
     setAudienceImportColumns([]);
     setAudienceImportMapping({});
+  }
+
+  // Media Plan Import Functions
+  const mediaPlanFileInputRef = useRef<HTMLInputElement>(null);
+
+  function openMediaPlanFilePicker() {
+    mediaPlanFileInputRef.current?.click();
+  }
+
+  function handleMediaPlanFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (isFileTooLarge(file, 'Media plan imports')) {
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target?.result;
+        if (!data) throw new Error('Unable to read file.');
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheet];
+        const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' }) as any[];
+        
+        // Auto-map columns using our mapping dictionary
+        const parsedRows = parseMediaPlanRows(jsonRows);
+        setMediaPlanParsedRows(parsedRows);
+        setShowMediaPlanImport(true);
+        toastSuccess('Media plan loaded', `Found ${parsedRows.length} placements.`);
+        addActivity(`Media plan imported (${parsedRows.length} placements)`);
+      } catch (err) {
+        console.error('Error parsing media plan', err);
+        toastError('Media plan parse failed', 'Please upload a CSV or Excel with placement data.');
+      } finally {
+        e.target.value = '';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function parseMediaPlanRows(rows: any[]): MediaPlanRow[] {
+    if (!rows.length) return [];
+    
+    // Get headers from first row
+    const sampleRow = rows[0];
+    const headers = Object.keys(sampleRow).map((h) => h.toLowerCase().trim());
+    
+    // Find column mappings
+    const findColumn = (mappingKey: string): string | null => {
+      const possibleNames = MEDIA_PLAN_COLUMN_MAPPINGS[mappingKey] || [];
+      for (const name of possibleNames) {
+        const matchingHeader = headers.find((h) => h === name.toLowerCase());
+        if (matchingHeader) {
+          return Object.keys(sampleRow).find((k) => k.toLowerCase().trim() === matchingHeader) || null;
+        }
+      }
+      return null;
+    };
+
+    const platformCol = findColumn('platform');
+    const placementCol = findColumn('placement');
+    const formatCol = findColumn('format');
+    const widthCol = findColumn('width');
+    const heightCol = findColumn('height');
+    const dimensionsCol = findColumn('dimensions');
+    const durationCol = findColumn('duration');
+    const budgetCol = findColumn('budget');
+    const startCol = findColumn('flight_start');
+    const endCol = findColumn('flight_end');
+    const targetingCol = findColumn('targeting');
+    const notesCol = findColumn('notes');
+
+    return rows.map((row, idx) => {
+      let width = 0, height = 0;
+      
+      // Try dimensions column first (e.g., "1080x1920")
+      if (dimensionsCol && row[dimensionsCol]) {
+        const dims = String(row[dimensionsCol]).match(/(\d+)\s*[xX×]\s*(\d+)/);
+        if (dims) {
+          width = parseInt(dims[1], 10);
+          height = parseInt(dims[2], 10);
+        }
+      }
+      // Fall back to separate width/height columns
+      if (!width && widthCol) width = parseInt(row[widthCol], 10) || 0;
+      if (!height && heightCol) height = parseInt(row[heightCol], 10) || 0;
+
+      // Infer media type from format or dimensions
+      const formatValue = formatCol ? String(row[formatCol] || '').toLowerCase() : '';
+      const durationValue = durationCol ? parseInt(row[durationCol], 10) || 0 : 0;
+      let media_type: 'video' | 'image' | 'html5' | 'audio' | 'native' = 'image';
+      if (formatValue.includes('video') || durationValue > 0) media_type = 'video';
+      else if (formatValue.includes('html5') || formatValue.includes('rich')) media_type = 'html5';
+      else if (formatValue.includes('audio')) media_type = 'audio';
+      else if (formatValue.includes('native')) media_type = 'native';
+
+      return {
+        id: `MP-${(idx + 1).toString().padStart(3, '0')}`,
+        platform: platformCol ? String(row[platformCol] || 'Unknown') : 'Unknown',
+        placement: placementCol ? String(row[placementCol] || 'Standard') : 'Standard',
+        format: formatCol ? String(row[formatCol] || '') : '',
+        width,
+        height,
+        media_type,
+        duration: durationValue || undefined,
+        budget: budgetCol ? parseFloat(String(row[budgetCol]).replace(/[^0-9.]/g, '')) || undefined : undefined,
+        flight_start: startCol ? String(row[startCol] || '') : undefined,
+        flight_end: endCol ? String(row[endCol] || '') : undefined,
+        targeting: targetingCol ? String(row[targetingCol] || '') : undefined,
+        notes: notesCol ? String(row[notesCol] || '') : undefined,
+        selected: true,
+      };
+    }).filter((row) => row.platform !== 'Unknown' || row.width > 0 || row.placement !== 'Standard');
+  }
+
+  function applyMediaPlanImport() {
+    const selectedRows = mediaPlanParsedRows.filter((r) => r.selected);
+    if (!selectedRows.length) {
+      toastWarning('No placements selected', 'Select at least one placement to import.');
+      return;
+    }
+
+    // Add new specs from media plan
+    const newSpecs: Spec[] = selectedRows.map((row, idx) => ({
+      id: `MP-SPEC-${Date.now()}-${idx}`,
+      platform: row.platform,
+      placement: row.placement,
+      width: row.width || 1080,
+      height: row.height || 1080,
+      orientation: row.height > row.width ? 'vertical' : row.width > row.height ? 'horizontal' : 'square',
+      media_type: row.media_type,
+      notes: [
+        row.format && `Format: ${row.format}`,
+        row.duration && `Duration: ${row.duration}s`,
+        row.budget && `Budget: $${row.budget.toLocaleString()}`,
+        row.flight_start && row.flight_end && `Flight: ${row.flight_start} - ${row.flight_end}`,
+        row.targeting && `Targeting: ${row.targeting}`,
+        row.notes,
+      ].filter(Boolean).join(' | ') || null,
+    }));
+
+    setSpecs((prev) => [...prev, ...newSpecs]);
+
+    // Also add to production matrix if we have concepts
+    if (concepts.length > 0) {
+      const newMatrixLines: ProductionMatrixLine[] = selectedRows.map((row, idx) => ({
+        id: `MP-LINE-${Date.now()}-${idx}`,
+        audience: row.targeting || 'All audiences',
+        concept_id: concepts[0]?.id || '',
+        spec_id: newSpecs[idx]?.id || '',
+        destinations: [{
+          name: `${row.platform} · ${row.placement}`,
+          spec_id: newSpecs[idx]?.id,
+        }],
+        notes: row.notes || '',
+        is_feed: false,
+      }));
+      setProductionMatrixRows((prev) => [...prev, ...newMatrixLines]);
+    }
+
+    setShowMediaPlanImport(false);
+    setMediaPlanParsedRows([]);
+    toastSuccess('Media plan imported', `Added ${newSpecs.length} specs from media plan.`);
+  }
+
+  function toggleMediaPlanRowSelection(id: string) {
+    setMediaPlanParsedRows((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, selected: !row.selected } : row))
+    );
+  }
+
+  function selectAllMediaPlanRows() {
+    setMediaPlanParsedRows((prev) => prev.map((row) => ({ ...row, selected: true })));
+  }
+
+  function clearMediaPlanSelection() {
+    setMediaPlanParsedRows((prev) => prev.map((row) => ({ ...row, selected: false })));
   }
 
   // Keep production matrix audience/segment data aligned with the latest strategy rows
@@ -3792,146 +5021,275 @@ export default function Home() {
       ref={containerRef}
       className="flex flex-col h-screen bg-[#F8FAFC] overflow-hidden font-sans text-slate-800"
     >
-      {/* Global header - shows across all workspace views */}
-      <div className="px-8 py-6 border-b border-gray-200 bg-white flex justify-between items-center shadow-sm z-50 relative">
-        <div className="flex items-center gap-6">
-          <div className="h-12 w-auto">
-            {/* Increased logo size and removed fixed width container constraint */}
+      {/* Global header - clean, single-row navigation */}
+      <div className="px-6 py-4 border-b border-gray-200 bg-white shadow-sm z-50 relative">
+        {/* Top row: Logo + Title + Actions */}
+        <div className="flex items-center justify-between gap-4">
+          {/* Left: Logo and Title */}
+          <div className="flex items-center gap-4 flex-shrink-0">
             <Image
               src="/logo.png"
               alt="Transparent Partners"
-              width={180}
-              height={48}
-              className="h-12 w-auto object-contain"
+              width={140}
+              height={40}
+              className="h-10 w-auto object-contain"
               priority
             />
+            <div className="hidden sm:block border-l border-slate-200 pl-4">
+              <h1 className="text-lg font-bold text-slate-900 tracking-tight leading-tight whitespace-nowrap">
+                Intelligent Creative Cortex
+              </h1>
+            </div>
           </div>
-          <div className="border-l border-slate-200 pl-6 h-10 flex flex-col justify-center">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-none mb-1">
-              Intelligent Creative Cortex
-            </h1>
-            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
-              The creative brain of your campaign
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {workspaceView === 'brief' && (
+
+          {/* Center: Workflow Navigation */}
+          <nav className="hidden lg:flex items-center bg-slate-50 rounded-full border border-slate-200 px-1.5 py-1">
+            {[
+              { id: 'brief' as WorkspaceView, label: 'Brief', num: 1, badgeClass: 'bg-teal-100 text-teal-600' },
+              { id: 'matrix' as WorkspaceView, label: 'Audiences', num: 2, badgeClass: 'bg-blue-100 text-blue-600' },
+              { id: 'concepts' as WorkspaceView, label: 'Concepts', num: 3, badgeClass: 'bg-purple-100 text-purple-600' },
+              { id: 'production' as WorkspaceView, label: 'Production', num: 4, badgeClass: 'bg-orange-100 text-orange-600' },
+              { id: 'feed' as WorkspaceView, label: 'Feed', num: 5, badgeClass: 'bg-emerald-100 text-emerald-600' },
+            ].map((step, idx, arr) => (
+              <Fragment key={step.id}>
+                <button
+                  type="button"
+                  onClick={() => switchWorkspace(step.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    workspaceView === step.id
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:bg-white/50'
+                  }`}
+                >
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    workspaceView === step.id ? 'bg-slate-800 text-white' : step.badgeClass
+                  }`}>
+                    {step.num}
+                  </span>
+                  <span>{step.label}</span>
+                </button>
+                {idx < arr.length - 1 && (
+                  <svg className="w-3 h-3 text-slate-300 mx-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                )}
+              </Fragment>
+            ))}
+          </nav>
+
+          {/* Right: Action Buttons */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* QA Check Button */}
+            <button
+              onClick={() => runAutoQA()}
+              disabled={qaRunning}
+              className={`relative text-xs font-medium px-3 py-2 rounded-full border transition-colors flex items-center gap-1.5 ${
+                qaResults.filter(i => i.severity === 'error').length > 0
+                  ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                  : qaResults.filter(i => i.severity === 'warning').length > 0
+                  ? 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100'
+                  : qaResults.length > 0
+                  ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300 hover:text-teal-600'
+              }`}
+            >
+              {qaRunning ? (
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+              <span className="hidden sm:inline">QA Check</span>
+              {qaResults.length > 0 && (
+                <span className={`w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center ${
+                  qaResults.filter(i => i.severity === 'error').length > 0 ? 'bg-red-500 text-white' :
+                  qaResults.filter(i => i.severity === 'warning').length > 0 ? 'bg-amber-500 text-white' :
+                  'bg-blue-500 text-white'
+                }`}>
+                  {qaResults.length}
+                </span>
+              )}
+            </button>
+            {/* QA Results Toggle */}
+            {qaResults.length > 0 && (
+              <button
+                onClick={() => setShowQaPanel((prev) => !prev)}
+                className="text-[10px] text-slate-500 hover:text-slate-700 underline"
+              >
+                {showQaPanel ? 'Hide' : 'View'}
+              </button>
+            )}
+            {workspaceView === 'brief' && (
+              <button
+                onClick={() => {
+                  setShowSample(false);
+                  setShowLibrary((prev) => !prev);
+                }}
+                className="hidden sm:block text-xs font-medium text-slate-500 hover:text-teal-600 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Library
+              </button>
+            )}
             <button
               onClick={() => {
-                if (workspaceView !== 'brief') switchWorkspace('brief');
-                setShowSample(false);
-                setShowLibrary((prev) => !prev);
+                setDemoMode((prev) => !prev);
+                setMessages([
+                  {
+                    role: 'assistant',
+                    content: !demoMode
+                      ? 'Demo mode is ON. I will simulate the agent locally so you can click around the interface without a backend.'
+                      : 'Demo mode is OFF. I will now talk to the live backend (when available on localhost:8000).',
+                  },
+                ]);
               }}
-              className="text-xs font-semibold text-slate-500 hover:text-teal-600 transition-colors px-3 py-2 rounded-lg hover:bg-slate-50"
-            >
-              Brief Library
-            </button>
-          )}
-          <div className="hidden md:flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-1 py-0.5">
-            <button
-              type="button"
-              onClick={() => switchWorkspace('brief')}
-              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
-                workspaceView === 'brief'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
+              className={`text-xs font-medium px-3 py-2 rounded-full border transition-colors ${
+                demoMode
+                  ? 'bg-emerald-500 text-white border-emerald-500'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-teal-300'
               }`}
             >
-              Brief
+              {demoMode ? 'Demo' : 'Live'}
             </button>
-            <button
-              type="button"
-              onClick={() => switchWorkspace('matrix')}
-              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
-                workspaceView === 'matrix'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
+            <a
+              href="/planning"
+              className="text-xs font-medium px-3 py-2 rounded-full bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 transition-colors flex items-center gap-1.5"
             >
-              Audiences
-            </button>
-            <button
-              type="button"
-              onClick={() => switchWorkspace('concepts')}
-              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
-                workspaceView === 'concepts'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Concepts
-            </button>
-            <button
-              type="button"
-              onClick={() => switchWorkspace('production')}
-              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors flex items-center gap-1 ${
-                workspaceView === 'production'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-              title={!isProductionReady ? `Brief must be ${PRODUCTION_READY_THRESHOLD}/10 to be production-ready (currently ${currentScore.toFixed(1)})` : 'Production Matrix'}
-            >
-              Production
-              {!isProductionReady && currentScore > 0 && (
-                <span className="text-[9px] text-amber-500" title="Brief score below production threshold">⚠</span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => switchWorkspace('feed')}
-              className={`text-[11px] px-2 py-1 rounded-full cursor-pointer transition-colors flex items-center gap-1 ${
-                workspaceView === 'feed'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-              title={!isProductionReady ? `Brief must be ${PRODUCTION_READY_THRESHOLD}/10 to be production-ready (currently ${currentScore.toFixed(1)})` : 'Content Feed'}
-            >
-              Feed
-              {!isProductionReady && currentScore > 0 && (
-                <span className="text-[9px] text-amber-500" title="Brief score below production threshold">⚠</span>
-              )}
-            </button>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+              <span className="hidden sm:inline">Workspace</span>
+            </a>
           </div>
-          <button
-            onClick={() => {
-              if (workspaceView !== 'brief') switchWorkspace('brief');
-              setShowSample((prev) => !prev);
-              setShowLibrary(false);
-            }}
-            className="text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 px-5 py-2.5 rounded-full border border-teal-100 transition-colors shadow-sm"
-          >
-            {showSample ? 'Hide Sample' : 'View Sample Output'}
-          </button>
-          <button
-            onClick={() => {
-              setDemoMode((prev) => !prev);
-              // Reset conversation when toggling demo mode for clarity
-              setMessages([
-                {
-                  role: 'assistant',
-                  content: !demoMode
-                    ? 'Demo mode is ON. I will simulate the agent locally so you can click around the interface without a backend.'
-                    : 'Demo mode is OFF. I will now talk to the live backend (when available on localhost:8000).',
-                },
-              ]);
-            }}
-            className={`text-xs font-semibold px-4 py-2 rounded-full border transition-colors ${
-              demoMode
-                ? 'bg-emerald-600 text-white border-emerald-600'
-                : 'bg-white text-slate-500 border-slate-200 hover:text-teal-600 hover:border-teal-300'
-            }`}
-          >
-            {demoMode ? 'Demo Mode: On' : 'Demo Mode: Off'}
-          </button>
         </div>
+
+        {/* Mobile workflow nav - only shows on smaller screens */}
+        <nav className="lg:hidden flex items-center justify-center gap-1 mt-3 pt-3 border-t border-slate-100">
+          {[
+            { id: 'brief', num: 1, color: 'teal' },
+            { id: 'matrix', num: 2, color: 'blue' },
+            { id: 'concepts', num: 3, color: 'purple' },
+            { id: 'production', num: 4, color: 'orange' },
+            { id: 'feed', num: 5, color: 'emerald' },
+          ].map((step, idx, arr) => (
+            <Fragment key={step.id}>
+              <button
+                type="button"
+                onClick={() => switchWorkspace(step.id as WorkspaceView)}
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                  workspaceView === step.id
+                    ? 'bg-slate-900 text-white shadow-md'
+                    : `bg-${step.color}-100 text-${step.color}-600`
+                }`}
+              >
+                {step.num}
+              </button>
+              {idx < arr.length - 1 && (
+                <div className="w-4 h-0.5 bg-slate-200" />
+              )}
+            </Fragment>
+          ))}
+        </nav>
       </div>
+
+      {/* QA Results Panel */}
+      {showQaPanel && qaResults.length > 0 && (
+        <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
+          <div className="max-w-7xl mx-auto px-4 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  QA Results
+                </h3>
+                <span className="text-[10px] text-slate-500">
+                  Last run: {lastQaRun}
+                </span>
+                <div className="flex items-center gap-2 text-[10px]">
+                  {qaResults.filter(i => i.severity === 'error').length > 0 && (
+                    <span className="flex items-center gap-1 text-red-600">
+                      <span className="w-2 h-2 rounded-full bg-red-500" />
+                      {qaResults.filter(i => i.severity === 'error').length} errors
+                    </span>
+                  )}
+                  {qaResults.filter(i => i.severity === 'warning').length > 0 && (
+                    <span className="flex items-center gap-1 text-amber-600">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      {qaResults.filter(i => i.severity === 'warning').length} warnings
+                    </span>
+                  )}
+                  {qaResults.filter(i => i.severity === 'suggestion').length > 0 && (
+                    <span className="flex items-center gap-1 text-blue-600">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      {qaResults.filter(i => i.severity === 'suggestion').length} suggestions
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setShowQaPanel(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+              {qaResults.map((issue) => (
+                <button
+                  key={issue.id}
+                  onClick={() => {
+                    // Navigate to the module
+                    switchWorkspace(issue.module === 'audiences' ? 'matrix' : issue.module);
+                    // If there's a field to focus, try to focus it
+                    if (issue.field && issue.module === 'brief') {
+                      setTimeout(() => focusBriefField(issue.field!), 100);
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] border transition-all hover:shadow-sm ${
+                    issue.severity === 'error'
+                      ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
+                      : issue.severity === 'warning'
+                      ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                      : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                    issue.severity === 'error' ? 'bg-red-500' :
+                    issue.severity === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
+                  }`} />
+                  <span className="font-medium capitalize">{issue.module}:</span>
+                  <span className="truncate max-w-xs">{issue.title}</span>
+                  {issue.action && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/50">
+                      {issue.action}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main workspace row: left chat + right panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* LEFT: Chat Interface (Brief-only) */}
         {workspaceView === 'brief' && (
           <div className="flex flex-col border-r border-gray-200 relative w-full md:w-1/2 md:max-w-1/2">
+            {workspaceGuidance && (
+              <WorkspaceGuidanceBanner
+                title={workspaceGuidance.title}
+                body={workspaceGuidance.body}
+                actionLabel={workspaceGuidance.actionLabel}
+                onAction={workspaceGuidance.action}
+                disabled={workspaceGuidance.disabled}
+                variant="light"
+              />
+            )}
             {/* Chat Area */}
             <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-[#F8FAFC]">
           {messages.map((msg, idx) => (
@@ -3979,20 +5337,33 @@ export default function Home() {
 
             <input
               className="flex-1 bg-transparent border-none focus:ring-0 text-slate-800 placeholder:text-slate-400 text-base"
-              placeholder="Type your response..."
+              placeholder={loading ? "AI is thinking..." : "Type your response..."}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+              onKeyDown={(e) => e.key === 'Enter' && !loading && sendMessage()}
               disabled={loading}
             />
             <button
               onClick={() => sendMessage()}
               disabled={loading}
-              className="bg-teal-600 text-white px-6 py-2.5 rounded-xl hover:bg-teal-700 disabled:opacity-70 font-semibold shadow-sm transition-colors text-sm"
+              className="bg-teal-600 text-white px-6 py-2.5 rounded-xl hover:bg-teal-700 disabled:opacity-70 font-semibold shadow-sm transition-colors text-sm flex items-center gap-2"
             >
-              Send
+              {loading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Thinking...</span>
+                </>
+              ) : (
+                'Send'
+              )}
             </button>
           </div>
+          <p className="mt-2 text-[11px] text-slate-400">
+            Attach .csv, .txt, .md, or .json files (max {MAX_UPLOAD_MB} MB).
+          </p>
         </div>
         
         {/* Sample Brief Modal Overlay */}
@@ -4168,8 +5539,48 @@ export default function Home() {
           <div className="px-6 py-5 border-b border-gray-100 bg-white flex justify-between items-center select-none">
             <div className="flex items-center gap-3">
               <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Intelligent Content Brief</h2>
+              {/* Autosave indicator */}
+              <span className={`text-[10px] px-2 py-0.5 rounded-full transition-opacity duration-300 ${
+                saveStatus === 'saving' 
+                  ? 'bg-amber-100 text-amber-600 opacity-100' 
+                  : saveStatus === 'saved'
+                  ? 'bg-emerald-100 text-emerald-600 opacity-100'
+                  : 'opacity-0'
+              }`}>
+                {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : ''}
+              </span>
+              {lastSavedAt && (
+                <span className="text-[10px] text-slate-400">
+                  Updated {lastSavedAt}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
+              {/* Undo/Redo buttons */}
+              <div className="flex items-center gap-1 mr-2">
+                <button
+                  type="button"
+                  onClick={undoBrief}
+                  disabled={briefHistoryIndex <= 0}
+                  className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Undo (Cmd+Z)"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={redoBrief}
+                  disabled={briefHistoryIndex >= briefHistory.length - 1}
+                  className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Redo (Cmd+Shift+Z)"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
+                  </svg>
+                </button>
+              </div>
               {demoMode && (
                 <button
                   type="button"
@@ -4188,6 +5599,33 @@ export default function Home() {
               </button>
             </div>
           </div>
+          {(briefQualityGaps.length > 0 || briefCompletionGaps.length > 0) ? (
+            <div className="px-6 py-3 bg-amber-50 border-b border-amber-200">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-amber-800">
+                <span className="font-semibold text-amber-900">Finish key inputs:</span>
+                {(briefQualityGaps.length ? briefQualityGaps : briefCompletionGaps)
+                  .slice(0, 4)
+                  .map((gap) => {
+                    const key = resolveBriefFieldKey(gap);
+                    if (!key) return null;
+                    return (
+                      <button
+                        key={gap}
+                        type="button"
+                        onClick={() => focusBriefField(key)}
+                        className="px-2 py-0.5 rounded-full border border-amber-300 bg-white hover:bg-amber-100"
+                      >
+                        {gap}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : (
+            <div className="px-6 py-2 bg-emerald-50 border-b border-emerald-200 text-[11px] text-emerald-700">
+              Brief inputs look solid. You can move to Audience Matrix or Concepts.
+            </div>
+          )}
           <div className="flex-1 p-6 overflow-y-auto bg-slate-50/40 space-y-4">
             {/* Administrative Section - Workflow & Job Tracking */}
             <div className="rounded-lg bg-slate-50 border border-slate-200 p-3.5 shadow-sm">
@@ -4232,6 +5670,119 @@ export default function Home() {
                 </div>
               </div>
             </div>
+            {/* Brief Health + Next Best Action */}
+            <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Next Best Action</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowQualityDetails((prev) => !prev)}
+                  className="text-[10px] font-medium text-teal-600 hover:text-teal-700"
+                >
+                  {showQualityDetails ? 'Hide quality details' : 'View quality details'}
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="text-[11px] text-slate-500">Brief health</span>
+                <span
+                  className={`text-[11px] font-semibold ${
+                    isProductionReady ? 'text-emerald-700' : currentScore >= 5 ? 'text-amber-700' : 'text-red-600'
+                  }`}
+                >
+                  {currentScore > 0 ? `${currentScore.toFixed(1)}/10` : '—'}
+                </span>
+                {isProductionReady ? (
+                  <span className="text-[10px] text-emerald-600 font-medium">Production-ready</span>
+                ) : (
+                  <span className="text-[10px] text-slate-500">Needs more signal</span>
+                )}
+              </div>
+              {!isProductionReady && (briefQualityGaps.length > 0 || briefCompletionGaps.length > 0) && (
+                <div className="mb-3">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">
+                    Prioritize
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(briefQualityGaps.length ? briefQualityGaps : briefCompletionGaps)
+                      .slice(0, 3)
+                      .map((gap) => (
+                        <span
+                          key={gap}
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600"
+                        >
+                          {gap}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              )}
+              {(briefQualityGaps.length > 0 || briefCompletionGaps.length > 0) && (
+                <div className="mb-3">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">
+                    Fix it now
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(briefQualityGaps.length ? briefQualityGaps : briefCompletionGaps)
+                      .slice(0, 3)
+                      .map((gap) => {
+                        const key = resolveBriefFieldKey(gap);
+                        if (!key) return null;
+                        return (
+                          <button
+                            key={gap}
+                            type="button"
+                            onClick={() => focusBriefField(key)}
+                            className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-teal-200 text-teal-700 hover:bg-teal-50"
+                          >
+                            {gap}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => switchWorkspace('matrix')}
+                  className="text-[11px] px-3 py-1.5 rounded-full border border-teal-500 text-teal-700 bg-teal-50 hover:bg-teal-100"
+                >
+                  Go to Audience Matrix
+                </button>
+                {isProductionReady && (
+                  <button
+                    type="button"
+                    onClick={() => switchWorkspace('concepts')}
+                    className="text-[11px] px-3 py-1.5 rounded-full border border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100"
+                  >
+                    Start Concepting
+                  </button>
+                )}
+              </div>
+              <p className="mt-3 text-[11px] text-slate-500">
+                Keep the brief focused on modular inputs: segments, triggers, channels, and proof points.
+              </p>
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Recent Activity</h3>
+                <span className="text-[10px] text-slate-400">Last 6 events</span>
+              </div>
+              {activityLog.length === 0 ? (
+                <p className="text-[11px] text-slate-400">
+                  Actions like uploads, drafts, and exports will show here.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {activityLog.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between text-[11px] text-slate-600">
+                      <span>{item.message}</span>
+                      <span className="text-slate-400">{item.time}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Brief Fields</h3>
@@ -4270,8 +5821,16 @@ export default function Home() {
               {(briefQualityAgentLoading || briefQualityRationale) && (
                 <div className="mt-2 text-[10px] text-slate-500">
                   <span className="font-semibold text-slate-600">Quality Assistant:</span>{' '}
-                  <span className="truncate">
-                    {briefQualityAgentLoading ? 'Scoring…' : briefQualityRationale}
+                  <span className="truncate flex items-center gap-2">
+                    {briefQualityAgentLoading ? (
+                      <>
+                        <svg className="animate-spin h-3 w-3 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Analyzing brief quality...</span>
+                      </>
+                    ) : briefQualityRationale}
                   </span>
                 </div>
               )}
@@ -4369,6 +5928,9 @@ export default function Home() {
                           value={value}
                           onChange={(e) => updateBriefFieldValue(field.key, e.target.value)}
                           placeholder={field.label}
+                          ref={(node) => {
+                            briefFieldRefs.current[field.key] = node;
+                          }}
                         />
                       ) : (
                         <input
@@ -4376,8 +5938,16 @@ export default function Home() {
                           value={value}
                           onChange={(e) => updateBriefFieldValue(field.key, e.target.value)}
                           placeholder={field.label}
+                          ref={(node) => {
+                            briefFieldRefs.current[field.key] = node;
+                          }}
                         />
                       )}
+                      {briefQualityGaps.includes(field.label) || briefCompletionGaps.includes(field.label) || briefQualityGaps.includes(field.key) || briefCompletionGaps.includes(field.key) ? (
+                        <p className="text-[10px] text-amber-600">
+                          {briefFieldHints[field.key] || 'Add more detail to improve brief quality.'}
+                        </p>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -4385,25 +5955,47 @@ export default function Home() {
               <div className="pt-4 mt-4 border-t border-slate-200 flex flex-wrap justify-end gap-2">
                 <button
                   onClick={() => downloadExport('txt')}
-                  className="px-3 py-1.5 text-[11px] font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+                  disabled={exportLoadingFormat === 'txt'}
+                  className={`px-3 py-1.5 text-[11px] font-medium rounded transition-colors ${
+                    exportLoadingFormat === 'txt'
+                      ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                      : 'text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50'
+                  }`}
                 >
-                  Download TXT
+                  {exportLoadingFormat === 'txt' ? 'Exporting…' : 'Download TXT'}
                 </button>
                 <button
                   onClick={() => downloadExport('pdf')}
-                  className="px-3 py-1.5 text-[11px] font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+                  disabled={exportLoadingFormat === 'pdf'}
+                  className={`px-3 py-1.5 text-[11px] font-medium rounded transition-colors ${
+                    exportLoadingFormat === 'pdf'
+                      ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                      : 'text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50'
+                  }`}
                 >
-                  Download PDF
+                  {exportLoadingFormat === 'pdf' ? 'Exporting…' : 'Download PDF'}
                 </button>
                 <button
                   onClick={() => downloadExport('json')}
-                  className="px-3 py-1.5 text-[11px] font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+                  disabled={exportLoadingFormat === 'json'}
+                  className={`px-3 py-1.5 text-[11px] font-medium rounded transition-colors ${
+                    exportLoadingFormat === 'json'
+                      ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                      : 'text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50'
+                  }`}
                 >
-                  Download JSON
+                  {exportLoadingFormat === 'json' ? 'Exporting…' : 'Download JSON'}
                 </button>
               </div>
             </div>
           </div>
+          <ModuleAssistantBar
+            title={moduleAssistant.title}
+            score={moduleAssistant.score}
+            completionNote={moduleAssistant.completionNote}
+            tips={moduleAssistant.tips}
+            dataFlowNote={moduleAssistant.dataFlowNote}
+          />
         </div>
       )}
 
@@ -4411,7 +6003,9 @@ export default function Home() {
       {workspaceView !== 'brief' && (
       <>
         <div
-          className="bg-white border-l border-gray-200 hidden md:flex flex-col shadow-xl z-20 w-full"
+          className={`bg-white border-l border-gray-200 hidden md:flex flex-col shadow-xl z-20 transition-all duration-300 ${
+            showAIAssistant ? 'w-2/3' : 'w-full'
+          }`}
         >
           <div className="px-6 py-5 border-b border-gray-100 bg-white flex justify-between items-center select-none">
             <div className="flex items-center gap-4">
@@ -4424,6 +6018,16 @@ export default function Home() {
                   ? 'Production Matrix'
                   : 'Content Feed'}
               </h2>
+              {workspaceView === 'concepts' && conceptDraftLoading && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full border border-purple-200 bg-purple-50 text-purple-700">
+                  Drafting concepts…
+                </span>
+              )}
+              {workspaceView === 'production' && productionLoading && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-200 bg-amber-50 text-amber-700">
+                  Generating production plan…
+                </span>
+              )}
               {workspaceView === 'concepts' && (
                 <div className="ml-4 flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-1 py-0.5">
                   <button
@@ -4450,6 +6054,20 @@ export default function Home() {
               )}
             </div>
               <div className="flex items-center gap-3">
+                {/* AI Assistant Toggle */}
+                <button
+                  onClick={() => setShowAIAssistant(!showAIAssistant)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-all flex items-center gap-1.5 ${
+                    showAIAssistant
+                      ? 'bg-purple-600 text-white border border-purple-600'
+                      : 'text-purple-600 hover:text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100'
+                  }`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  AI Assist
+                </button>
                 <button
                   onClick={() => switchWorkspace('brief')}
                   className="px-3 py-1.5 text-xs font-semibold text-teal-700 hover:text-teal-800 bg-teal-50 border border-teal-100 rounded-full transition-colors"
@@ -4492,21 +6110,36 @@ export default function Home() {
               )}
               <button
                 onClick={() => downloadExport('json')}
-                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+                disabled={exportLoadingFormat === 'json'}
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                  exportLoadingFormat === 'json'
+                    ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                    : 'text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50'
+                }`}
               >
-                JSON
+                {exportLoadingFormat === 'json' ? 'Exporting…' : 'JSON'}
               </button>
               <button
                 onClick={() => downloadExport('txt')}
-                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+                disabled={exportLoadingFormat === 'txt'}
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                  exportLoadingFormat === 'txt'
+                    ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                    : 'text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50'
+                }`}
               >
-                TXT
+                {exportLoadingFormat === 'txt' ? 'Exporting…' : 'TXT'}
               </button>
               <button
                 onClick={() => downloadExport('pdf')}
-                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50 rounded transition-colors"
+                disabled={exportLoadingFormat === 'pdf'}
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                  exportLoadingFormat === 'pdf'
+                    ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                    : 'text-slate-600 hover:text-teal-600 bg-slate-100 hover:bg-teal-50'
+                }`}
               >
-                PDF
+                {exportLoadingFormat === 'pdf' ? 'Exporting…' : 'PDF'}
               </button>
             </div>
           </div>
@@ -4530,12 +6163,26 @@ export default function Home() {
                       <p className="text-sm max-w-[240px]">
                         After your brief is complete, start sketching the content matrix here. Use the button below to add rows.
                       </p>
-                      <button
-                        onClick={addMatrixRow}
-                        className="mt-2 px-4 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-full border border-teal-100"
-                      >
-                        Add first row
-                      </button>
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        <button
+                          onClick={addMatrixRow}
+                          className="mt-2 px-4 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-full border border-teal-100"
+                        >
+                          Add first row
+                        </button>
+                        <button
+                          onClick={openAudienceFilePicker}
+                          className="mt-2 px-4 py-2 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 rounded-full border border-slate-200"
+                        >
+                          Import audience CSV
+                        </button>
+                        <button
+                          onClick={() => setShowMatrixLibrary(true)}
+                          className="mt-2 px-4 py-2 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 rounded-full border border-slate-200"
+                        >
+                          Open matrix library
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="w-full">
@@ -4637,17 +6284,36 @@ export default function Home() {
                           </div>
                         )}
                         <div className="overflow-x-auto">
-                          <table className="w-full text-xs text-left">
-                            <thead className="bg-slate-50 text-slate-500">
+                          <table className="w-full text-xs text-left table-fixed">
+                            <thead className="bg-slate-50 text-slate-500 sticky top-0 z-10">
                               <tr>
-                                <th className="px-2 py-2 w-16 text-center font-semibold">Line</th>
+                                <th className="px-2 py-2 w-14 text-center font-semibold">Line</th>
                                 <th className="px-2 py-2 w-8 text-center"></th>
-                                {matrixFields.filter((f) => visibleMatrixFields.includes(f.key)).map((field) => (
-                                  <th key={field.key} className="px-2 py-2">
-                                    {field.label}
-                                  </th>
-                                ))}
-                                <th className="px-2 py-2"></th>
+                                {matrixFields.filter((f) => visibleMatrixFields.includes(f.key)).map((field) => {
+                                  // Assign minimum widths based on field type
+                                  const minWidth = 
+                                    field.key.includes('description') || field.key.includes('insight') || field.key.includes('perception') 
+                                      ? 'min-w-[200px]' 
+                                      : field.key.includes('name') || field.key.includes('segment') 
+                                      ? 'min-w-[140px]'
+                                      : field.key.includes('size') || field.key.includes('id')
+                                      ? 'min-w-[80px]'
+                                      : 'min-w-[120px]';
+                                  return (
+                                    <th 
+                                      key={field.key} 
+                                      className={`px-2 py-2 ${minWidth} truncate group relative cursor-help`}
+                                      title={field.label}
+                                    >
+                                      <span className="truncate block">{field.label}</span>
+                                      {/* Tooltip on hover */}
+                                      <div className="absolute hidden group-hover:block z-20 left-0 top-full mt-1 px-2 py-1 bg-slate-800 text-white text-[10px] rounded shadow-lg whitespace-nowrap">
+                                        {field.label}
+                                      </div>
+                                    </th>
+                                  );
+                                })}
+                                <th className="px-2 py-2 w-16"></th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -4668,17 +6334,28 @@ export default function Home() {
                                         {expandedMatrixRows[index] ? '−' : '+'}
                                       </button>
                                     </td>
-                                    {matrixFields.filter((f) => visibleMatrixFields.includes(f.key)).map((field) => (
-                                      <td key={field.key} className="px-2 py-1">
+                                    {matrixFields.filter((f) => visibleMatrixFields.includes(f.key)).map((field) => {
+                                      const cellValue = row[field.key] ?? '';
+                                      const minWidth = 
+                                        field.key.includes('description') || field.key.includes('insight') || field.key.includes('perception') 
+                                          ? 'min-w-[200px]' 
+                                          : field.key.includes('name') || field.key.includes('segment') 
+                                          ? 'min-w-[140px]'
+                                          : field.key.includes('size') || field.key.includes('id')
+                                          ? 'min-w-[80px]'
+                                          : 'min-w-[120px]';
+                                      return (
+                                      <td key={field.key} className={`px-2 py-1 ${minWidth}`}>
                                         <input
-                                          value={row[field.key] ?? ''}
+                                          value={cellValue}
                                           onChange={(e) =>
                                             updateMatrixCell(index, field.key as MatrixFieldKey, e.target.value)
                                           }
-                                          className="w-full border border-gray-200 rounded px-2 py-2 text-sm leading-5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                          title={cellValue.length > 30 ? cellValue : undefined}
+                                          className="w-full border border-gray-200 rounded px-2 py-2 text-sm leading-5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 truncate"
                                         />
                                       </td>
-                                    ))}
+                                    );})}
                                     <td className="px-2 py-1 text-right">
                                       <button
                                         onClick={() => removeMatrixRow(index)}
@@ -5072,9 +6749,22 @@ export default function Home() {
                           <p className="text-[11px] text-red-500">{builderError}</p>
                         )}
                         {builderJobs.length === 0 && (
-                          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-500">
-                            No jobs generated yet. Scroll up to the bottom of the Production Requirements Matrix and click
-                            <span className="font-semibold text-slate-700"> Generate Production List</span>.
+                          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-[11px] text-slate-500">
+                            <p>
+                              No jobs generated yet. Create a production plan to see build-ready jobs and requirements.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={generateProductionPlan}
+                              disabled={productionLoading}
+                              className={`mt-2 px-3 py-1.5 rounded-full border ${
+                                productionLoading
+                                  ? 'border-slate-200 text-slate-400 bg-slate-100 cursor-not-allowed'
+                                  : 'border-teal-500 text-teal-700 bg-teal-50 hover:bg-teal-100'
+                              }`}
+                            >
+                              {productionLoading ? 'Generating…' : 'Generate production plan'}
+                            </button>
                           </div>
                         )}
 
@@ -5402,6 +7092,31 @@ export default function Home() {
                         </p>
                       </div>
                     <div className="flex items-center gap-2">
+                        {/* View toggle */}
+                        <div className="flex items-center bg-slate-100 rounded-full p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setProductionBoardView('list')}
+                            className={`px-2.5 py-1 text-[10px] rounded-full transition-colors ${
+                              productionBoardView === 'list'
+                                ? 'bg-white text-slate-800 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                          >
+                            List
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setProductionBoardView('kanban')}
+                            className={`px-2.5 py-1 text-[10px] rounded-full transition-colors ${
+                              productionBoardView === 'kanban'
+                                ? 'bg-white text-slate-800 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                          >
+                            Kanban
+                          </button>
+                        </div>
                       <button
                         type="button"
                         onClick={() => setShowBoard((prev) => !prev)}
@@ -5421,10 +7136,169 @@ export default function Home() {
                             ? 'Regenerate Plan'
                             : 'Generate Plan'}
                         </button>
+                        {builderJobs.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDcoExportValidation(validateDcoExport(dcoExportPlatform));
+                              setShowDcoExport(true);
+                            }}
+                            className="px-3 py-1.5 text-[11px] rounded-full border border-purple-500 text-purple-700 bg-purple-50 hover:bg-purple-100"
+                          >
+                            Export to DCO
+                          </button>
+                        )}
                       </div>
                     </div>
                     {showBoard && (
                       <>
+                        {/* Production Progress Dashboard */}
+                        {builderJobs.length > 0 && (
+                          <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200 rounded-xl p-4 mb-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">
+                                Production Progress
+                              </h4>
+                              <span className="text-[11px] text-slate-500">
+                                {builderJobs.filter(j => j.status === 'Approved').length} / {builderJobs.length} complete
+                              </span>
+                            </div>
+                            
+                            {/* Progress Bar */}
+                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden mb-3">
+                              <div className="h-full flex">
+                                <div 
+                                  className="bg-emerald-500 transition-all duration-300" 
+                                  style={{ width: `${(builderJobs.filter(j => j.status === 'Approved').length / builderJobs.length) * 100}%` }} 
+                                />
+                                <div 
+                                  className="bg-amber-400 transition-all duration-300" 
+                                  style={{ width: `${(builderJobs.filter(j => j.status === 'Review').length / builderJobs.length) * 100}%` }} 
+                                />
+                                <div 
+                                  className="bg-sky-400 transition-all duration-300" 
+                                  style={{ width: `${(builderJobs.filter(j => j.status === 'In_Progress').length / builderJobs.length) * 100}%` }} 
+                                />
+                              </div>
+                            </div>
+                            
+                            {/* Status Breakdown */}
+                            <div className="grid grid-cols-4 gap-2 text-center">
+                              <div className="bg-white border border-slate-100 rounded-lg p-2">
+                                <span className="block text-lg font-bold text-slate-400">
+                                  {builderJobs.filter(j => j.status === 'Pending').length}
+                                </span>
+                                <span className="text-[9px] text-slate-500 uppercase tracking-wide">Todo</span>
+                              </div>
+                              <div className="bg-white border border-sky-100 rounded-lg p-2">
+                                <span className="block text-lg font-bold text-sky-600">
+                                  {builderJobs.filter(j => j.status === 'In_Progress').length}
+                                </span>
+                                <span className="text-[9px] text-sky-600 uppercase tracking-wide">In Progress</span>
+                              </div>
+                              <div className="bg-white border border-amber-100 rounded-lg p-2">
+                                <span className="block text-lg font-bold text-amber-600">
+                                  {builderJobs.filter(j => j.status === 'Review').length}
+                                </span>
+                                <span className="text-[9px] text-amber-600 uppercase tracking-wide">In Review</span>
+                              </div>
+                              <div className="bg-white border border-emerald-100 rounded-lg p-2">
+                                <span className="block text-lg font-bold text-emerald-600">
+                                  {builderJobs.filter(j => j.status === 'Approved').length}
+                                </span>
+                                <span className="text-[9px] text-emerald-600 uppercase tracking-wide">Approved</span>
+                              </div>
+                            </div>
+                            
+                            {/* Priority Breakdown */}
+                            {builderJobs.some(j => j.priority === 'urgent' || j.priority === 'high') && (
+                              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-3 text-[10px]">
+                                {builderJobs.filter(j => j.priority === 'urgent').length > 0 && (
+                                  <span className="flex items-center gap-1 text-red-600">
+                                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                                    {builderJobs.filter(j => j.priority === 'urgent').length} urgent
+                                  </span>
+                                )}
+                                {builderJobs.filter(j => j.priority === 'high').length > 0 && (
+                                  <span className="flex items-center gap-1 text-orange-600">
+                                    <span className="w-2 h-2 rounded-full bg-orange-500" />
+                                    {builderJobs.filter(j => j.priority === 'high').length} high priority
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Bulk Actions Toolbar */}
+                        {selectedJobIds.size > 0 && (
+                          <div className="flex items-center gap-3 p-3 bg-teal-50 border border-teal-200 rounded-lg mb-3">
+                            <span className="text-[11px] font-semibold text-teal-800">
+                              {selectedJobIds.size} selected
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <select
+                                onChange={(e) => {
+                                  if (e.target.value) bulkUpdateStatus(e.target.value as any);
+                                  e.target.value = '';
+                                }}
+                                className="text-[11px] border border-teal-300 rounded-md px-2 py-1 bg-white"
+                                defaultValue=""
+                              >
+                                <option value="" disabled>Set status...</option>
+                                <option value="Pending">Todo</option>
+                                <option value="In_Progress">In Progress</option>
+                                <option value="Review">In Review</option>
+                                <option value="Approved">Approved</option>
+                              </select>
+                              <select
+                                onChange={(e) => {
+                                  if (e.target.value) bulkUpdatePriority(e.target.value as any);
+                                  e.target.value = '';
+                                }}
+                                className="text-[11px] border border-teal-300 rounded-md px-2 py-1 bg-white"
+                                defaultValue=""
+                              >
+                                <option value="" disabled>Set priority...</option>
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                                <option value="urgent">Urgent</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const name = window.prompt('Assign to:');
+                                  if (name !== null) bulkUpdateAssignee(name);
+                                }}
+                                className="text-[11px] px-2 py-1 rounded-md border border-teal-300 bg-white hover:bg-teal-100 text-teal-700"
+                              >
+                                Assign...
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={clearJobSelection}
+                              className="ml-auto text-[11px] text-teal-600 hover:text-teal-800"
+                            >
+                              Clear selection
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* Select All / Clear */}
+                        {builderJobs.length > 0 && selectedJobIds.size === 0 && (
+                          <div className="flex items-center gap-2 mb-2">
+                            <button
+                              type="button"
+                              onClick={selectAllJobs}
+                              className="text-[10px] text-slate-500 hover:text-slate-700 underline"
+                            >
+                              Select all ({builderJobs.length})
+                            </button>
+                          </div>
+                        )}
+                        
                         {productionError && (
                           <p className="text-[11px] text-red-500">{productionError}</p>
                         )}
@@ -5434,7 +7308,125 @@ export default function Home() {
                               Generate the Production List above to view the two-column board linking creative details to live status.
                             </p>
                           </div>
+                        ) : productionBoardView === 'kanban' ? (
+                          /* ============ KANBAN VIEW ============ */
+                          <div className="overflow-x-auto pb-4">
+                            <div className="flex gap-4 min-w-max">
+                              {(['Pending', 'In_Progress', 'Review', 'Approved'] as const).map((columnStatus) => {
+                                const columnJobs = builderJobs.filter((j) => (j.status || 'Pending') === columnStatus);
+                                const columnLabel = columnStatus === 'In_Progress' ? 'In Progress' : columnStatus === 'Review' ? 'In Review' : columnStatus;
+                                const columnColor = columnStatus === 'Approved' ? 'emerald' : columnStatus === 'Review' ? 'amber' : columnStatus === 'In_Progress' ? 'sky' : 'slate';
+                                return (
+                                  <div key={columnStatus} className="w-72 flex-shrink-0">
+                                    {/* Column Header */}
+                                    <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg bg-${columnColor}-100 border-b-2 border-${columnColor}-300`}>
+                                      <div className="flex items-center gap-2">
+                                        <span className={`w-2 h-2 rounded-full bg-${columnColor}-500`} />
+                                        <span className="text-[11px] font-semibold text-slate-700">{columnLabel}</span>
+                                      </div>
+                                      <span className="text-[10px] font-medium text-slate-500 bg-white px-1.5 py-0.5 rounded">
+                                        {columnJobs.length}
+                                      </span>
+                                    </div>
+                                    {/* Column Body */}
+                                    <div className="bg-slate-50 rounded-b-lg border border-t-0 border-slate-200 p-2 min-h-[400px] space-y-2">
+                                      {columnJobs.length === 0 ? (
+                                        <div className="text-center py-8 text-slate-400 text-[11px]">
+                                          No jobs
+                                        </div>
+                                      ) : (
+                                        columnJobs.map((job) => {
+                                          const isSelected = selectedJobIds.has(job.job_id);
+                                          return (
+                                            <div
+                                              key={job.job_id}
+                                              className={`bg-white rounded-lg border p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer ${
+                                                isSelected ? 'border-teal-400 ring-1 ring-teal-200' : 'border-slate-200'
+                                              }`}
+                                              onClick={() => toggleJobSelection(job.job_id)}
+                                            >
+                                              {/* Ticket number & priority */}
+                                              <div className="flex items-center justify-between mb-2">
+                                                {job.ticket_number && (
+                                                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                                    {job.ticket_number}
+                                                  </span>
+                                                )}
+                                                {job.priority && job.priority !== 'medium' && (
+                                                  <span className={`text-[9px] px-1.5 py-0.5 rounded ${
+                                                    job.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                                                    job.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                                                    'bg-slate-100 text-slate-600'
+                                                  }`}>
+                                                    {job.priority}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {/* Title */}
+                                              <p className="text-[11px] font-semibold text-slate-800 mb-1 line-clamp-2">
+                                                {job.creative_concept}
+                                              </p>
+                                              {/* Asset type & specs */}
+                                              <p className="text-[10px] text-slate-500 mb-2">
+                                                {job.asset_type} · {job.technical_summary.split(' ').slice(0, 2).join(' ')}
+                                              </p>
+                                              {/* Assignee & due date */}
+                                              <div className="flex items-center justify-between text-[9px] text-slate-400">
+                                                <span>{job.assignee || 'Unassigned'}</span>
+                                                {job.due_date && (
+                                                  <span className="flex items-center gap-1">
+                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                    </svg>
+                                                    {job.due_date}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {/* Approval status */}
+                                              {job.approval_status && job.approval_status !== 'pending' && (
+                                                <div className="mt-2 pt-2 border-t border-slate-100">
+                                                  <span className={`text-[9px] px-1.5 py-0.5 rounded ${
+                                                    job.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                                                    job.approval_status === 'submitted' ? 'bg-blue-100 text-blue-700' :
+                                                    job.approval_status === 'revision_requested' ? 'bg-amber-100 text-amber-700' :
+                                                    'bg-red-100 text-red-700'
+                                                  }`}>
+                                                    {job.approval_status === 'approved' ? '✓ Approved' :
+                                                     job.approval_status === 'submitted' ? '📤 Submitted' :
+                                                     job.approval_status === 'revision_requested' ? '↩ Revision R' + (job.revision_number || 1) :
+                                                     '✗ Rejected'}
+                                                  </span>
+                                                </div>
+                                              )}
+                                              {/* Quick status change */}
+                                              <div className="mt-2 pt-2 border-t border-slate-100">
+                                                <select
+                                                  value={job.status}
+                                                  onChange={(e) => {
+                                                    e.stopPropagation();
+                                                    updateJobStatus(job.job_id, e.target.value as any);
+                                                  }}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  className="w-full text-[10px] border border-slate-200 rounded px-1.5 py-1 bg-white"
+                                                >
+                                                  <option value="Pending">Todo</option>
+                                                  <option value="In_Progress">In Progress</option>
+                                                  <option value="Review">In Review</option>
+                                                  <option value="Approved">Approved</option>
+                                                </select>
+                                              </div>
+                                            </div>
+                                          );
+                                        })
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
                         ) : (
+                          /* ============ LIST VIEW ============ */
                           <div className="space-y-3">
                             {builderJobs.map((job) => {
                               const requirementsValue = jobRequirements[job.job_id] ?? '';
@@ -5445,6 +7437,7 @@ export default function Home() {
                                 (job.technical_summary || '').toLowerCase().includes('spec not set') ||
                                 job.asset_type === 'asset';
                               const missingDestinations = job.missing_destinations || job.destinations.length === 0;
+                              const platformWarnings = validatePlatformSpec(job);
                               const requirementFields =
                                 jobRequirementFields[job.job_id] || getDefaultRequirementFields(job.asset_type);
                               const buildDirectionValue = jobBuildDetails[job.job_id]?.build_direction || '';
@@ -5458,25 +7451,65 @@ export default function Home() {
                                   : status === 'In_Progress'
                                   ? 'bg-sky-500'
                                   : 'bg-slate-300';
+                              const isSelected = selectedJobIds.has(job.job_id);
                               return (
                                 <div
                                   key={job.job_id}
-                                  className="grid grid-cols-1 lg:grid-cols-2 gap-3 bg-white border border-slate-200 rounded-xl p-3 shadow-sm"
+                                  className={`grid grid-cols-1 lg:grid-cols-2 gap-3 bg-white border rounded-xl p-3 shadow-sm transition-colors ${
+                                    isSelected ? 'border-teal-400 ring-1 ring-teal-200' : 'border-slate-200'
+                                  }`}
                                 >
                                   {/* Left: creative unit details */}
                                   <div className="space-y-2">
                                     <div className="flex items-center justify-between gap-2">
-                                      <div>
-                                        <p className="text-[11px] font-semibold text-slate-800">
-                                          {job.creative_concept}
-                                        </p>
-                                        <p className="text-[10px] text-slate-500">
-                                          {job.asset_type} · {job.job_id}
-                                        </p>
+                                      <div className="flex items-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={() => toggleJobSelection(job.job_id)}
+                                          className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                                        />
+                                        <div>
+                                          <div className="flex items-center gap-2">
+                                            <p className="text-[11px] font-semibold text-slate-800">
+                                              {job.creative_concept}
+                                            </p>
+                                            {job.ticket_number && (
+                                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                                {job.ticket_number}
+                                              </span>
+                                            )}
+                                            {job.revision_number && job.revision_number > 1 && (
+                                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">
+                                                R{job.revision_number}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <p className="text-[10px] text-slate-500">
+                                            {job.asset_type}
+                                          </p>
+                                        </div>
                                       </div>
-                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                                        Specs
-                                      </span>
+                                      <div className="flex items-center gap-1">
+                                        {job.approval_status && job.approval_status !== 'pending' && (
+                                          <span className={`text-[9px] px-1.5 py-0.5 rounded ${
+                                            job.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                                            job.approval_status === 'submitted' ? 'bg-blue-100 text-blue-700' :
+                                            job.approval_status === 'revision_requested' ? 'bg-amber-100 text-amber-700' :
+                                            job.approval_status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                            'bg-slate-100 text-slate-600'
+                                          }`}>
+                                            {job.approval_status === 'approved' ? '✓ Approved' :
+                                             job.approval_status === 'submitted' ? '📤 Submitted' :
+                                             job.approval_status === 'revision_requested' ? '↩ Revision' :
+                                             job.approval_status === 'rejected' ? '✗ Rejected' :
+                                             job.approval_status}
+                                          </span>
+                                        )}
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                          Specs
+                                        </span>
+                                      </div>
                                     </div>
                                     <p className="text-[11px] text-slate-700">{job.technical_summary}</p>
                                     {missingDestinations && (
@@ -5488,6 +7521,31 @@ export default function Home() {
                                       <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
                                         Spec missing – add a spec to unlock tailored build details and requirements.
                                       </p>
+                                    )}
+                                    {/* Platform Validation Warnings */}
+                                    {platformWarnings.length > 0 && (
+                                      <div className="space-y-1">
+                                        {platformWarnings.slice(0, 3).map((warning, idx) => (
+                                          <p
+                                            key={idx}
+                                            className={`text-[10px] rounded px-2 py-1 ${
+                                              warning.type === 'error'
+                                                ? 'text-red-700 bg-red-50 border border-red-200'
+                                                : warning.type === 'warning'
+                                                ? 'text-amber-700 bg-amber-50 border border-amber-200'
+                                                : 'text-blue-700 bg-blue-50 border border-blue-200'
+                                            }`}
+                                          >
+                                            {warning.type === 'error' ? '⚠️ ' : warning.type === 'warning' ? '⚡ ' : 'ℹ️ '}
+                                            {warning.message}
+                                          </p>
+                                        ))}
+                                        {platformWarnings.length > 3 && (
+                                          <p className="text-[9px] text-slate-500">
+                                            +{platformWarnings.length - 3} more warnings
+                                          </p>
+                                        )}
+                                      </div>
                                     )}
                                     <div className="flex flex-wrap gap-1">
                                       {job.destinations.map((dest) => (
@@ -5615,6 +7673,149 @@ export default function Home() {
                                         <option value="Approved">Approved</option>
                                       </select>
                                     </div>
+                                    
+                                    {/* Assignee, Due Date, Priority */}
+                                    <div className="grid grid-cols-3 gap-2">
+                                      <div>
+                                        <label className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+                                          Assignee
+                                        </label>
+                                        <input
+                                          type="text"
+                                          placeholder="Name"
+                                          value={job.assignee || ''}
+                                          onChange={(e) => updateJobAssignee(job.job_id, e.target.value)}
+                                          className="w-full text-[11px] border border-slate-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+                                          Due Date
+                                        </label>
+                                        <input
+                                          type="date"
+                                          value={job.due_date || ''}
+                                          onChange={(e) => updateJobDueDate(job.job_id, e.target.value)}
+                                          className="w-full text-[11px] border border-slate-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+                                          Priority
+                                        </label>
+                                        <select
+                                          value={job.priority || 'medium'}
+                                          onChange={(e) => updateJobPriority(job.job_id, e.target.value as 'low' | 'medium' | 'high' | 'urgent')}
+                                          className={`w-full text-[11px] border rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-teal-500 ${
+                                            job.priority === 'urgent' ? 'border-red-300 text-red-700' :
+                                            job.priority === 'high' ? 'border-orange-300 text-orange-700' :
+                                            job.priority === 'low' ? 'border-slate-200 text-slate-500' :
+                                            'border-slate-200'
+                                          }`}
+                                        >
+                                          <option value="low">Low</option>
+                                          <option value="medium">Medium</option>
+                                          <option value="high">High</option>
+                                          <option value="urgent">Urgent</option>
+                                        </select>
+                                      </div>
+                                    </div>
+
+                                    {/* Internal Review & Estimation */}
+                                    <div className="grid grid-cols-3 gap-2">
+                                      <div>
+                                        <label className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+                                          QC Reviewer
+                                        </label>
+                                        <input
+                                          type="text"
+                                          placeholder="Reviewer"
+                                          value={job.reviewer || ''}
+                                          onChange={(e) => updateJobReviewer(job.job_id, e.target.value)}
+                                          className="w-full text-[11px] border border-slate-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+                                          Est. Hours
+                                        </label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.5"
+                                          placeholder="0"
+                                          value={job.estimated_hours || ''}
+                                          onChange={(e) => updateJobEstimatedHours(job.job_id, parseFloat(e.target.value) || 0)}
+                                          className="w-full text-[11px] border border-slate-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+                                          Est. Cost ($)
+                                        </label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="50"
+                                          placeholder="0"
+                                          value={job.cost_estimate ? (job.cost_estimate / 100).toFixed(0) : ''}
+                                          onChange={(e) => updateJobCostEstimate(job.job_id, Math.round(parseFloat(e.target.value) * 100) || 0)}
+                                          className="w-full text-[11px] border border-slate-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Client Approval Workflow */}
+                                    <div className="border-t border-slate-100 pt-2 mt-1">
+                                      <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                                        Client Approval
+                                      </p>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                          <select
+                                            value={job.approval_status || 'pending'}
+                                            onChange={(e) => updateJobApprovalStatus(job.job_id, e.target.value as 'pending' | 'submitted' | 'approved' | 'revision_requested' | 'rejected')}
+                                            className={`w-full text-[11px] border rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-teal-500 ${
+                                              job.approval_status === 'approved' ? 'border-emerald-300 text-emerald-700' :
+                                              job.approval_status === 'revision_requested' ? 'border-amber-300 text-amber-700' :
+                                              job.approval_status === 'rejected' ? 'border-red-300 text-red-700' :
+                                              job.approval_status === 'submitted' ? 'border-blue-300 text-blue-700' :
+                                              'border-slate-200'
+                                            }`}
+                                          >
+                                            <option value="pending">Pending Review</option>
+                                            <option value="submitted">Submitted</option>
+                                            <option value="approved">Approved</option>
+                                            <option value="revision_requested">Revision Requested</option>
+                                            <option value="rejected">Rejected</option>
+                                          </select>
+                                        </div>
+                                        <div>
+                                          <input
+                                            type="text"
+                                            placeholder="Approver name"
+                                            value={job.approver || ''}
+                                            onChange={(e) => updateJobApprover(job.job_id, e.target.value)}
+                                            className="w-full text-[11px] border border-slate-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                          />
+                                        </div>
+                                      </div>
+                                      {(job.approval_status === 'revision_requested' || job.approval_status === 'rejected') && (
+                                        <textarea
+                                          placeholder="Approval comments / revision notes..."
+                                          value={job.approval_comments || ''}
+                                          onChange={(e) => updateJobApprovalComments(job.job_id, e.target.value)}
+                                          rows={2}
+                                          className="w-full mt-2 text-[11px] border border-slate-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-teal-500 resize-none"
+                                        />
+                                      )}
+                                      {job.approved_at && (
+                                        <p className="text-[9px] text-emerald-600 mt-1">
+                                          Approved: {new Date(job.approved_at).toLocaleDateString()}
+                                        </p>
+                                      )}
+                                    </div>
+                                    
                                     <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
                                       Actual creative can be dropped here (e.g., link or embed). Use Production Plan export to align with ops.
                                     </div>
@@ -5790,6 +7991,13 @@ export default function Home() {
                           className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
                         >
                           Reset to defaults
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openMediaPlanFilePicker}
+                          className="px-3 py-1.5 text-[11px] rounded-full border border-indigo-500 text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
+                        >
+                          Import media plan
                         </button>
                         <button
                           type="button"
@@ -6205,6 +8413,7 @@ export default function Home() {
                           ref={brandAssetFileInputRef}
                           className="hidden"
                           multiple
+                          accept="image/*,application/pdf"
                           onChange={handleBrandAssetChange}
                         />
                         <input
@@ -6360,12 +8569,37 @@ export default function Home() {
                         Start capturing modular creative concepts here. Link each concept to an asset or audience row
                         from the Strategy Matrix.
                       </p>
-                      <button
-                        onClick={addConcept}
-                        className="mt-2 px-4 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-full border border-teal-100"
-                      >
-                        Add first concept
-                      </button>
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        <button
+                          onClick={addConcept}
+                          className="mt-2 px-4 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-full border border-teal-100"
+                        >
+                          Add first concept
+                        </button>
+                        <button
+                          onClick={draftConceptsFromBrief}
+                          disabled={conceptDraftLoading}
+                          className={`mt-2 px-4 py-2 text-xs font-medium rounded-full border ${
+                            conceptDraftLoading
+                              ? 'border-slate-200 text-slate-400 bg-slate-100 cursor-not-allowed'
+                              : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                          }`}
+                        >
+                          {conceptDraftLoading ? 'Drafting…' : 'Draft from brief'}
+                        </button>
+                        <button
+                          onClick={openConceptFilePicker}
+                          className="mt-2 px-4 py-2 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 rounded-full border border-slate-200"
+                        >
+                          Upload concepts
+                        </button>
+                        <button
+                          onClick={openConceptMediaPicker}
+                          className="mt-2 px-4 py-2 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 rounded-full border border-slate-200"
+                        >
+                          Upload media
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-6">
@@ -7163,6 +9397,13 @@ export default function Home() {
                         No concepts on the board yet. From the Concepts tab, use “Add to concept board” on any card to
                         pin it here.
                       </p>
+                      <button
+                        type="button"
+                        onClick={() => switchWorkspace('concepts')}
+                        className="mt-1 px-4 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-full border border-teal-100"
+                      >
+                        Go to Concepts
+                      </button>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -7769,7 +10010,187 @@ export default function Home() {
               )}
             </div>
           </div>
+          {workspaceGuidance && (
+            <WorkspaceGuidanceBanner
+              title={workspaceGuidance.title}
+              body={workspaceGuidance.body}
+              actionLabel={workspaceGuidance.actionLabel}
+              onAction={workspaceGuidance.action}
+              disabled={workspaceGuidance.disabled}
+            />
+          )}
+          {workspaceView === 'concepts' && !hasAudienceMatrix && (
+            <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 text-amber-800">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[12px]">
+                  Add at least one audience row so concepts can map to segments.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => switchWorkspace('matrix')}
+                  className="text-[11px] px-3 py-1.5 rounded-full border border-amber-400 text-amber-800 bg-white hover:bg-amber-100 whitespace-nowrap"
+                >
+                  Go to Audience Matrix
+                </button>
+              </div>
+            </div>
+          )}
+          {workspaceView === 'production' && !hasConcepts && (
+            <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 text-amber-800">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[12px]">
+                  Add or draft concepts before generating a production plan.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => switchWorkspace('concepts')}
+                  className="text-[11px] px-3 py-1.5 rounded-full border border-amber-400 text-amber-800 bg-white hover:bg-amber-100 whitespace-nowrap"
+                >
+                  Go to Concepts
+                </button>
+              </div>
+            </div>
+          )}
+          {workspaceView === 'feed' && !hasProductionPlan && (
+            <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 text-amber-800">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[12px]">
+                  Generate a production plan before building the feed.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => switchWorkspace('production')}
+                  className="text-[11px] px-3 py-1.5 rounded-full border border-amber-400 text-amber-800 bg-white hover:bg-amber-100 whitespace-nowrap"
+                >
+                  Go to Production
+                </button>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* AI Assistant Panel - Right Side for Non-Brief Modules */}
+        {showAIAssistant && (
+          <div className="w-1/3 min-w-[320px] max-w-[400px] bg-white border-l border-slate-200 flex flex-col shadow-xl">
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800">AI Assistant</h3>
+                  <p className="text-[10px] text-slate-500 capitalize">{getCurrentModuleContext()} Helper</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAIAssistant(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Quick Prompts */}
+            {getCurrentModuleContext() && aiAssistantMessages.length === 0 && (
+              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Quick Actions</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {moduleQuickPrompts[getCurrentModuleContext()!]?.map((prompt, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => sendAIAssistantMessage(prompt.prompt)}
+                      className="px-2.5 py-1 text-[10px] rounded-full border border-purple-200 bg-white text-purple-700 hover:bg-purple-50 hover:border-purple-300 transition-colors"
+                    >
+                      {prompt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {aiAssistantMessages.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-purple-100 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-slate-600 font-medium">How can I help?</p>
+                  <p className="text-[11px] text-slate-400 mt-1 max-w-[200px] mx-auto">
+                    Ask questions or use quick actions above to get started.
+                  </p>
+                </div>
+              ) : (
+                aiAssistantMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[85%] px-3 py-2 rounded-xl text-[12px] leading-relaxed ${
+                        msg.role === 'user'
+                          ? 'bg-purple-600 text-white rounded-br-sm'
+                          : 'bg-slate-100 text-slate-700 rounded-bl-sm'
+                      }`}
+                    >
+                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+              {aiAssistantLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-slate-100 px-4 py-2 rounded-xl flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
+                    <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                    <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Input */}
+            <div className="p-3 border-t border-slate-100 bg-white">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={aiAssistantInput}
+                  onChange={(e) => setAiAssistantInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendAIAssistantMessage(aiAssistantInput);
+                    }
+                  }}
+                  placeholder="Ask a question..."
+                  className="flex-1 px-3 py-2 text-[12px] border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-400"
+                />
+                <button
+                  onClick={() => sendAIAssistantMessage(aiAssistantInput)}
+                  disabled={!aiAssistantInput.trim() || aiAssistantLoading}
+                  className="px-4 py-2 text-[11px] font-semibold bg-purple-600 text-white rounded-full hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Send
+                </button>
+              </div>
+              {aiAssistantMessages.length > 0 && (
+                <button
+                  onClick={() => setAiAssistantMessages([])}
+                  className="mt-2 text-[10px] text-slate-400 hover:text-slate-600 w-full text-center"
+                >
+                  Clear conversation
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </>
       )}
 
@@ -7872,6 +10293,13 @@ export default function Home() {
               </div>
             </div>
           </div>
+          <ModuleAssistantBar
+            title={moduleAssistant.title}
+            score={moduleAssistant.score}
+            completionNote={moduleAssistant.completionNote}
+            tips={moduleAssistant.tips}
+            dataFlowNote={moduleAssistant.dataFlowNote}
+          />
         </div>
       )}
 
@@ -8091,6 +10519,308 @@ export default function Home() {
         </div>
       )}
 
+      {/* Media Plan Import Modal */}
+      {showMediaPlanImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-white">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">Import Media Plan</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Review and select placements to import from your media plan. Specs will be auto-created.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowMediaPlanImport(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Selection controls */}
+            <div className="px-5 py-2 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={selectAllMediaPlanRows}
+                  className="text-[10px] text-slate-600 hover:text-teal-700 underline"
+                >
+                  Select all ({mediaPlanParsedRows.length})
+                </button>
+                <button
+                  onClick={clearMediaPlanSelection}
+                  className="text-[10px] text-slate-600 hover:text-teal-700 underline"
+                >
+                  Clear selection
+                </button>
+              </div>
+              <span className="text-[11px] text-slate-500">
+                {mediaPlanParsedRows.filter(r => r.selected).length} of {mediaPlanParsedRows.length} selected
+              </span>
+            </div>
+
+            {/* Placements table */}
+            <div className="flex-1 overflow-auto px-5 py-4">
+              <table className="min-w-full text-[11px]">
+                <thead className="sticky top-0 bg-white">
+                  <tr className="text-left text-slate-500 border-b border-slate-200">
+                    <th className="py-2 pr-3 w-10"></th>
+                    <th className="py-2 pr-3 font-semibold">Platform</th>
+                    <th className="py-2 pr-3 font-semibold">Placement</th>
+                    <th className="py-2 pr-3 font-semibold">Size</th>
+                    <th className="py-2 pr-3 font-semibold">Format</th>
+                    <th className="py-2 pr-3 font-semibold">Duration</th>
+                    <th className="py-2 pr-3 font-semibold">Budget</th>
+                    <th className="py-2 pr-3 font-semibold">Flight</th>
+                    <th className="py-2 font-semibold">Targeting</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mediaPlanParsedRows.map((row) => (
+                    <tr
+                      key={row.id}
+                      className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${
+                        row.selected ? 'bg-teal-50/50' : ''
+                      }`}
+                      onClick={() => toggleMediaPlanRowSelection(row.id)}
+                    >
+                      <td className="py-2 pr-3">
+                        <input
+                          type="checkbox"
+                          checked={row.selected || false}
+                          onChange={() => toggleMediaPlanRowSelection(row.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                        />
+                      </td>
+                      <td className="py-2 pr-3 font-medium text-slate-800">{row.platform}</td>
+                      <td className="py-2 pr-3 text-slate-700">{row.placement}</td>
+                      <td className="py-2 pr-3">
+                        {row.width && row.height ? (
+                          <span className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">
+                            {row.width}×{row.height}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                          row.media_type === 'video' ? 'bg-purple-100 text-purple-700' :
+                          row.media_type === 'html5' ? 'bg-blue-100 text-blue-700' :
+                          row.media_type === 'audio' ? 'bg-cyan-100 text-cyan-700' :
+                          'bg-slate-100 text-slate-600'
+                        }`}>
+                          {row.media_type}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3 text-slate-600">
+                        {row.duration ? `${row.duration}s` : '—'}
+                      </td>
+                      <td className="py-2 pr-3 text-slate-600">
+                        {row.budget ? `$${row.budget.toLocaleString()}` : '—'}
+                      </td>
+                      <td className="py-2 pr-3 text-slate-600">
+                        {row.flight_start && row.flight_end ? (
+                          <span className="text-[10px]">
+                            {row.flight_start} → {row.flight_end}
+                          </span>
+                        ) : '—'}
+                      </td>
+                      <td className="py-2 text-slate-600 max-w-[150px] truncate" title={row.targeting}>
+                        {row.targeting || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              
+              {mediaPlanParsedRows.length === 0 && (
+                <div className="text-center py-12 text-slate-400">
+                  <p>No placements found in the uploaded file.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+              <p className="text-[10px] text-slate-500">
+                Selected placements will create specs and production matrix rows.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowMediaPlanImport(false)}
+                  className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={applyMediaPlanImport}
+                  disabled={!mediaPlanParsedRows.some(r => r.selected)}
+                  className="px-4 py-1.5 text-[11px] rounded-full border border-indigo-500 text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Import {mediaPlanParsedRows.filter(r => r.selected).length} placements
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden file input for media plan import */}
+      <input
+        type="file"
+        ref={mediaPlanFileInputRef}
+        className="hidden"
+        accept=".csv,.xlsx,.xls"
+        onChange={handleMediaPlanFileChange}
+      />
+
+      {/* DCO Platform Export Modal */}
+      {showDcoExport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-purple-50 to-white">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">Export to DCO Platform</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Export production jobs for trafficking to your DCO platform.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowDcoExport(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              {/* Platform Selection */}
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide block mb-2">
+                  Select Platform
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { id: 'flashtalking', name: 'Flashtalking (Innovid)', format: 'CSV', color: 'blue' },
+                    { id: 'innovid', name: 'Innovid Native', format: 'JSON', color: 'purple' },
+                    { id: 'celtra', name: 'Celtra', format: 'JSON', color: 'orange' },
+                    { id: 'storyteq', name: 'StoryTeq', format: 'CSV', color: 'green' },
+                  ] as const).map((platform) => (
+                    <button
+                      key={platform.id}
+                      type="button"
+                      onClick={() => {
+                        setDcoExportPlatform(platform.id);
+                        setDcoExportValidation(validateDcoExport(platform.id));
+                      }}
+                      className={`p-3 rounded-lg border-2 text-left transition-all ${
+                        dcoExportPlatform === platform.id
+                          ? 'border-purple-500 bg-purple-50'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <p className="text-[11px] font-semibold text-slate-800">{platform.name}</p>
+                      <p className="text-[10px] text-slate-500">{platform.format} format</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Export Summary */}
+              <div className="bg-slate-50 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-semibold text-slate-600">Export Summary</span>
+                  <span className="text-[11px] text-slate-500">{builderJobs.length} assets</span>
+                </div>
+                <div className="grid grid-cols-4 gap-2 text-center text-[10px]">
+                  <div className="bg-white rounded p-2">
+                    <span className="block font-bold text-slate-600">{builderJobs.filter(j => j.asset_type === 'video').length}</span>
+                    <span className="text-slate-400">Video</span>
+                  </div>
+                  <div className="bg-white rounded p-2">
+                    <span className="block font-bold text-slate-600">{builderJobs.filter(j => j.asset_type === 'image').length}</span>
+                    <span className="text-slate-400">Image</span>
+                  </div>
+                  <div className="bg-white rounded p-2">
+                    <span className="block font-bold text-slate-600">{builderJobs.filter(j => j.asset_type === 'html5' || j.asset_type === 'h5').length}</span>
+                    <span className="text-slate-400">HTML5</span>
+                  </div>
+                  <div className="bg-white rounded p-2">
+                    <span className="block font-bold text-slate-600">{builderJobs.filter(j => j.asset_type === 'copy').length}</span>
+                    <span className="text-slate-400">Copy</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Validation Results */}
+              {dcoExportValidation.errors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-[11px] font-semibold text-red-700 mb-1">Errors (must fix before export)</p>
+                  <ul className="text-[10px] text-red-600 space-y-0.5">
+                    {dcoExportValidation.errors.map((err, idx) => (
+                      <li key={idx}>• {err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {dcoExportValidation.warnings.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-[11px] font-semibold text-amber-700 mb-1">Warnings (can proceed but review)</p>
+                  <ul className="text-[10px] text-amber-600 space-y-0.5">
+                    {dcoExportValidation.warnings.slice(0, 5).map((warn, idx) => (
+                      <li key={idx}>• {warn}</li>
+                    ))}
+                    {dcoExportValidation.warnings.length > 5 && (
+                      <li className="text-amber-500">...and {dcoExportValidation.warnings.length - 5} more</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+
+              {dcoExportValidation.valid && dcoExportValidation.warnings.length === 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                  <p className="text-[11px] font-semibold text-emerald-700">
+                    ✓ All {builderJobs.length} assets ready for export
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+              <p className="text-[10px] text-slate-500">
+                File will download in {dcoExportPlatform === 'innovid' || dcoExportPlatform === 'celtra' ? 'JSON' : 'CSV'} format.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDcoExport(false)}
+                  className="px-3 py-1.5 text-[11px] rounded-full border border-slate-200 text-slate-600 bg-white hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDcoExport}
+                  disabled={!dcoExportValidation.valid}
+                  className="px-4 py-1.5 text-[11px] rounded-full border border-purple-500 text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Export to {dcoExportPlatform.charAt(0).toUpperCase() + dcoExportPlatform.slice(1)}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </main>
 
       {/* Image Expansion Modal */}
@@ -8115,6 +10845,99 @@ export default function Home() {
               className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Keyboard Shortcuts Help Modal */}
+      {showKeyboardHelp && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+          onClick={() => setShowKeyboardHelp(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800">Keyboard Shortcuts</h2>
+              <button
+                onClick={() => setShowKeyboardHelp(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <div>
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Navigation</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Go to Brief</span>
+                    <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">1</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Go to Audiences</span>
+                    <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">2</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Go to Concepts</span>
+                    <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">3</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Go to Production</span>
+                    <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">4</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Go to Feed</span>
+                    <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">5</kbd>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Editing</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Undo</span>
+                    <div className="flex gap-1">
+                      <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">⌘</kbd>
+                      <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">Z</kbd>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Redo</span>
+                    <div className="flex gap-1">
+                      <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">⌘</kbd>
+                      <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">⇧</kbd>
+                      <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">Z</kbd>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">General</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Show this help</span>
+                    <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">?</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Close modals</span>
+                    <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 rounded border border-slate-200">Esc</kbd>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setShowKeyboardHelp(false)}
+                className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+              >
+                Got it
+              </button>
+            </div>
           </div>
         </div>
       )}
