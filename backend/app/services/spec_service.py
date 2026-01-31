@@ -105,6 +105,12 @@ def _flatten_platform_specs() -> List[Spec]:
     """
     Flatten the nested platform_specs.json structure into Spec rows
     suitable for UI tables and feed builders.
+    
+    Enhanced to extract production-critical fields:
+    - max_duration_seconds
+    - aspect_ratio
+    - file_size_limit_kb
+    - audio_guidance
     """
     data = load_specs()
     platforms = data.get("platforms", {})
@@ -123,6 +129,32 @@ def _flatten_platform_specs() -> List[Spec]:
                     width = height = 0
 
             spec_id = f"{platform_id}_{fmt.get('id', '')}".upper()
+            
+            # Extract duration constraints
+            max_duration = fmt.get("max_duration_seconds")
+            
+            # Extract aspect ratio
+            aspect_ratio = fmt.get("ratio")
+            
+            # Determine audio guidance based on media type and safe zone notes
+            media_type = fmt.get("media_type", "image_or_video")
+            safe_zone_notes = fmt.get("safe_zones", {}).get("instruction", "")
+            
+            audio_guidance = None
+            if "video" in media_type.lower():
+                if "sound-on" in safe_zone_notes.lower() or "sound on" in safe_zone_notes.lower():
+                    audio_guidance = "Sound on recommended"
+                elif "sound-off" in safe_zone_notes.lower() or "sound off" in safe_zone_notes.lower():
+                    audio_guidance = "Design for sound off; use captions"
+                elif "muted" in safe_zone_notes.lower():
+                    audio_guidance = "Design for sound off; use captions"
+                else:
+                    audio_guidance = "Sound optional; ensure captions for accessibility"
+            
+            # Estimate file size limits for display ads
+            file_size_limit_kb = None
+            if "html5" in media_type.lower() or platform_id in ["gdn", "open_web"]:
+                file_size_limit_kb = 150  # Standard GDN/display limit
 
             flattened.append(
                 Spec(
@@ -132,8 +164,12 @@ def _flatten_platform_specs() -> List[Spec]:
                     width=width,
                     height=height,
                     orientation=fmt.get("ratio", ""),
-                    media_type=fmt.get("media_type", "image_or_video"),
-                    notes=fmt.get("safe_zones", {}).get("instruction"),
+                    media_type=media_type,
+                    notes=safe_zone_notes if safe_zone_notes else None,
+                    max_duration_seconds=max_duration,
+                    aspect_ratio=aspect_ratio,
+                    file_size_limit_kb=file_size_limit_kb,
+                    audio_guidance=audio_guidance,
                 )
             )
 

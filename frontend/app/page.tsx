@@ -213,6 +213,12 @@ type Spec = {
   orientation: string;
   media_type: string;
   notes?: string | null;
+  // Enhanced production fields
+  max_duration_seconds?: number;      // e.g., 15, 60, 6 for bumpers
+  min_duration_seconds?: number;      // e.g., 3 for some formats
+  file_size_limit_kb?: number;        // e.g., 150 for display ads
+  aspect_ratio?: string;              // e.g., "9:16", "16:9", "1:1"
+  audio_guidance?: string;            // e.g., "Sound on", "Sound off/captions"
 };
 
 type ProductionBatch = {
@@ -246,6 +252,12 @@ type DeliveryDestinationRow = {
   spec_id: string;
   format_name: string;
   special_notes: string;
+  // Enhanced spec details for production clarity
+  max_duration_seconds?: number;       // e.g., 15, 60, 6
+  dimensions?: string;                 // e.g., "1080x1920"
+  aspect_ratio?: string;               // e.g., "9:16", "16:9"
+  media_type?: string;                 // e.g., "video", "image", "html5"
+  file_size_limit_kb?: number;         // e.g., 150 for display ads
 };
 
 type DestinationEntry = {
@@ -273,6 +285,8 @@ type ProductionJobRow = {
   approval_comments?: string;
   // Production lifecycle
   revision_number?: number;            // R1, R2, R3 tracking
+  round_label?: string;                // e.g., "R1", "R2", "Final"
+  version_tag?: string;                // e.g., "v1", "v1.1_localized"
   cost_estimate?: number;              // Estimated cost in cents
   estimated_hours?: number;
   reviewer?: string;                   // Internal QC reviewer
@@ -289,6 +303,65 @@ type ProductionJobRow = {
   // DAM reference
   dam_asset_url?: string;
   dam_asset_id?: string;
+  
+  // === NEW PRODUCTION ENGINEERING FIELDS ===
+  
+  // Brief context (for traceability)
+  campaign_name?: string;              // From brief
+  single_minded_proposition?: string;  // Core message from brief
+  
+  // Production notes (consolidated safe zones & platform guidance)
+  production_notes?: string;           // Consolidated safe zone & platform guidance
+  
+  // Duration constraints
+  max_duration_seconds?: number;       // e.g., 15, 6, 60
+  min_duration_seconds?: number;       // e.g., 3 for some formats
+  
+  // File specifications
+  file_format?: string;                // e.g., "MP4", "MOV", "HTML5", "JPG"
+  codec?: string;                      // e.g., "H.264", "H.265"
+  audio_spec?: string;                 // e.g., "Sound on", "Sound off / captions required"
+  frame_rate?: string;                 // e.g., "30fps", "24fps"
+  file_size_limit_mb?: number;         // e.g., 4.0, 150 (for display)
+  
+  // Source type
+  source_type?: 'new_shoot' | 'stock' | 'existing' | 'ugc' | 'ai_generated';
+  shoot_code?: string;                 // Link to shoot or kit
+  
+  // Localization
+  language?: string;                   // e.g., "EN-US", "Multi-market"
+  requires_subtitles?: boolean;
+  localization_notes?: string;
+  
+  // Compliance
+  legal_disclaimer_required?: boolean;
+  talent_usage_rights?: string;        // e.g., "In perpetuity", "6 months"
+  music_licensing_status?: string;     // e.g., "Licensed", "Needs clearance"
+  
+  // === TRACEABILITY FIELDS ===
+  
+  // Concept linkage
+  concept_id?: string;                 // Link to source concept
+  concept_name?: string;               // Concept name for display
+  
+  // Feed linkage
+  feed_row_ids?: string[];             // Feed rows generated from this job
+  
+  // Audience linkage
+  audience_ids?: string[];             // Target audience segment IDs
+  audience_names?: string[];           // Audience segment names for display
+  
+  // Funnel stage
+  funnel_stage?: 'awareness' | 'consideration' | 'conversion' | 'retention';
+  
+  // Module type (for DCO taxonomy)
+  module_type?: string;                // e.g., "hook", "value_prop", "cta"
+  
+  // Workflow status (enhanced)
+  workflow_status?: 'backlog' | 'ready' | 'in_progress' | 'in_review' | 'approved' | 'delivered';
+  
+  // Platform destination
+  destination_platform?: string;       // e.g., "flashtalking", "innovid", "celtra"
 };
 
 type BuildDetails = {
@@ -507,6 +580,8 @@ type HistoricalBrief = {
   narrative_brief: string;
 };
 
+type FunnelStage = 'awareness' | 'consideration' | 'conversion' | 'retention';
+
 type Concept = {
   id: string;
   asset_id: string;
@@ -524,6 +599,11 @@ type Concept = {
   audienceLineIds?: string[]; // Array of audience matrix row IDs associated with this concept
   selectedFields?: Array<{ lineId: string; fieldKey: string; fieldLabel: string; fieldValue: string }>; // Selected fields from audience lines
   errorMessage?: string; // Error message if generation failed
+  // Enhanced ModCon fields
+  funnelStages?: FunnelStage[]; // Funnel stages this concept targets
+  moduleType?: string; // Link to module taxonomy (hook, value_prop, proof_point, etc.)
+  productionJobIds?: string[]; // Production jobs linked to this concept
+  feedRowIds?: string[]; // Feed rows generated from this concept
 };
 
 const DESTINATION_OPTIONS_BY_PLATFORM: Record<string, string[]> = {
@@ -3177,6 +3257,9 @@ export default function Home() {
             spec_id: asset.spec_details?.id || '',
             format_name: asset.placement,
             special_notes: asset.visual_directive || '',
+            max_duration_seconds: asset.spec_details?.max_duration,
+            dimensions: asset.spec_dimensions,
+            aspect_ratio: asset.spec_details?.aspect_ratio,
           }],
           technical_summary: `${asset.spec_dimensions} ${asset.spec_details?.format_name || asset.asset_type}`,
           status: asset.status || 'Pending',
@@ -3186,6 +3269,23 @@ export default function Home() {
           created_at: now,
           updated_at: now,
           is_feed: false,
+          // NEW: Brief context for traceability
+          campaign_name: briefState.campaign_name || campaignName,
+          single_minded_proposition: briefState.single_minded_proposition || '',
+          // NEW: Production engineering fields
+          production_notes: `SAFE ZONE GUIDANCE:\n• ${asset.platform} (${asset.placement}): Keep text/logo clear of UI chrome; respect safe zones.\n• Standard safe zones apply across all destinations.`,
+          // Only set duration for video assets
+          max_duration_seconds: (asset.asset_type === 'video') ? (asset.spec_details?.max_duration || 15) : undefined,
+          // Correct file format based on asset type
+          file_format: asset.asset_type === 'video' ? 'MP4' : (asset.asset_type === 'html5' ? 'HTML5' : 'JPG/PNG'),
+          codec: asset.asset_type === 'video' ? 'H.264' : undefined,
+          audio_spec: asset.asset_type === 'video' ? 'Sound on recommended; ensure captions for accessibility' : undefined,
+          frame_rate: asset.asset_type === 'video' ? '30fps' : undefined,
+          requires_subtitles: asset.asset_type === 'video',
+          // File size limit for display assets
+          file_size_limit_mb: (asset.asset_type === 'html5' || asset.asset_type === 'image') ? 150 : undefined,
+          round_label: 'R1',
+          version_tag: 'v1',
         };
       });
       setTicketCounter(localTicketCounter);
@@ -3275,6 +3375,9 @@ export default function Home() {
               spec_id: asset.spec_details?.id || '',
               format_name: asset.placement,
               special_notes: asset.visual_directive || '',
+              max_duration_seconds: asset.spec_details?.max_duration,
+              dimensions: asset.spec_dimensions,
+              aspect_ratio: asset.spec_details?.aspect_ratio,
             }],
             technical_summary: `${asset.spec_dimensions} ${asset.spec_details?.format_name || asset.asset_type}`,
             status: asset.status || 'Pending',
@@ -3284,6 +3387,23 @@ export default function Home() {
             created_at: now,
             updated_at: now,
             is_feed: false,
+            // NEW: Brief context for traceability
+            campaign_name: briefState.campaign_name || '',
+            single_minded_proposition: briefState.single_minded_proposition || '',
+            // NEW: Production engineering fields
+            production_notes: `SAFE ZONE GUIDANCE:\n• ${asset.platform} (${asset.placement}): ${asset.spec_details?.safe_zone || 'Standard safe zones apply.'}\n`,
+            // Only set duration for video assets
+            max_duration_seconds: (asset.asset_type === 'video') ? asset.spec_details?.max_duration : undefined,
+            // Correct file format based on asset type
+            file_format: asset.asset_type === 'video' ? 'MP4' : (asset.asset_type === 'html5' ? 'HTML5' : 'JPG/PNG'),
+            codec: asset.asset_type === 'video' ? 'H.264' : undefined,
+            audio_spec: asset.asset_type === 'video' ? 'Sound on recommended; ensure captions for accessibility' : undefined,
+            frame_rate: asset.asset_type === 'video' ? '30fps' : undefined,
+            requires_subtitles: asset.asset_type === 'video',
+            // File size limit for display assets
+            file_size_limit_mb: (asset.asset_type === 'html5' || asset.asset_type === 'image') ? 150 : undefined,
+            round_label: 'R1',
+            version_tag: 'v1',
           };
         });
         setTicketCounter(localTicketCounter);
@@ -3427,12 +3547,20 @@ export default function Home() {
 
   const getDefaultRequirementFields = (assetType: string): RequirementField[] => {
     const type = (assetType || '').toLowerCase();
-    const fromLibrary = requirementsLibrary[type];
+    // Check for direct match first
+    let fromLibrary = requirementsLibrary[type];
+    // Fallback: check common aliases
+    if (!fromLibrary || !fromLibrary.length) {
+      if (type === 'html5' || type === 'display') {
+        fromLibrary = requirementsLibrary['h5'];
+      }
+    }
     if (fromLibrary && fromLibrary.length) return fromLibrary;
+    // Default for static/image assets
     return [
-      { id: 'composition', label: 'Composition', value: '' },
-      { id: 'subject', label: 'Subject', value: '' },
-      { id: 'background', label: 'Background', value: '' },
+      { id: 'composition', label: 'Composition', value: 'Rule of thirds; product focal point' },
+      { id: 'subject', label: 'Subject', value: 'Hero product or benefit demonstration' },
+      { id: 'background', label: 'Background', value: 'Lifestyle context or brand gradient' },
     ];
   };
 
@@ -3840,6 +3968,18 @@ export default function Home() {
           localTicketCounter += 1;
           const ticketNum = `PROD-${new Date().getFullYear()}-${String(localTicketCounter).padStart(3, '0')}`;
 
+          // Build production notes from destination safe zones
+          const safeZoneNotes = jobDestinations
+            .map(d => d.special_notes)
+            .filter(n => n && n !== 'Standard')
+            .map(n => `• ${n}`);
+          const productionNotes = safeZoneNotes.length > 0
+            ? `SAFE ZONE GUIDANCE:\n${safeZoneNotes.join('\n')}`
+            : 'SAFE ZONE GUIDANCE:\n• Standard safe zones apply. Check platform specs before final delivery.';
+          
+          // Determine duration from spec
+          const specDuration = spec?.max_duration_seconds;
+          
           jobs.push({
             job_id: jobId,
             ticket_number: ticketNum,
@@ -3860,6 +4000,22 @@ export default function Home() {
             feed_asset_id: row.feed_asset_id,
             production_details: row.production_details,
             missing_destinations: !hasDestinations,
+            // NEW: Brief context for traceability
+            campaign_name: briefState.campaign_name || '',
+            single_minded_proposition: briefState.single_minded_proposition || '',
+            // NEW: Production engineering fields
+            production_notes: productionNotes,
+            // Only set duration for video assets
+            max_duration_seconds: (inferredAssetType === 'video') ? specDuration : undefined,
+            file_format: inferredAssetType === 'video' ? 'MP4' : (inferredAssetType === 'html5' ? 'HTML5' : 'JPG/PNG'),
+            codec: inferredAssetType === 'video' ? 'H.264' : undefined,
+            audio_spec: inferredAssetType === 'video' ? 'Sound on recommended; ensure captions' : undefined,
+            frame_rate: inferredAssetType === 'video' ? '30fps' : undefined,
+            requires_subtitles: inferredAssetType === 'video',
+            // File size limit for display assets
+            file_size_limit_mb: (inferredAssetType === 'html5' || inferredAssetType === 'image' || inferredAssetType === 'static') ? 150 : undefined,
+            round_label: 'R1',
+            version_tag: 'v1',
           });
         });
       });
@@ -3888,6 +4044,9 @@ export default function Home() {
         body: JSON.stringify({
           creative_concept: conceptLabel,
           spec_ids: builderSelectedSpecIds,
+          // NEW: Pass brief context for production traceability
+          campaign_name: briefState.campaign_name || '',
+          single_minded_proposition: briefState.single_minded_proposition || '',
         }),
       });
       if (!res.ok) {
@@ -3895,7 +4054,44 @@ export default function Home() {
         throw new Error(text || `Failed with status ${res.status}`);
       }
       const data = await res.json();
-      setBuilderJobs(data.jobs || []);
+      // Map backend jobs to frontend format with enhanced fields
+      const now = new Date().toISOString();
+      let localTicketCounter = ticketCounter;
+      const jobs: ProductionJobRow[] = (data.jobs || []).map((backendJob: any, idx: number) => {
+        localTicketCounter += 1;
+        const ticketNum = `PROD-${new Date().getFullYear()}-${String(localTicketCounter).padStart(3, '0')}`;
+        return {
+          job_id: backendJob.job_id,
+          ticket_number: ticketNum,
+          creative_concept: backendJob.creative_concept,
+          asset_type: backendJob.asset_type,
+          destinations: backendJob.destinations || [],
+          technical_summary: backendJob.technical_summary,
+          status: backendJob.status || 'Pending',
+          priority: idx === 0 ? 'high' : 'medium',
+          approval_status: 'pending' as const,
+          revision_number: 1,
+          created_at: now,
+          updated_at: now,
+          is_feed: false,
+          // NEW: Brief context from backend
+          campaign_name: backendJob.campaign_name || briefState.campaign_name || '',
+          single_minded_proposition: backendJob.single_minded_proposition || briefState.single_minded_proposition || '',
+          // NEW: Production engineering fields from backend
+          production_notes: backendJob.production_notes || '',
+          max_duration_seconds: backendJob.max_duration_seconds,
+          file_format: backendJob.file_format,
+          codec: backendJob.codec,
+          audio_spec: backendJob.audio_spec,
+          frame_rate: backendJob.frame_rate,
+          requires_subtitles: backendJob.requires_subtitles,
+          round_label: backendJob.round_label || 'R1',
+          version_tag: backendJob.version_tag || 'v1',
+        };
+      });
+      setTicketCounter(localTicketCounter);
+      saveToStorage('ticketCounter', localTicketCounter);
+      setBuilderJobs(jobs);
       setJobFeedMeta({});
     } catch (e: any) {
       console.error('Error generating production jobs', e);
@@ -6816,7 +7012,35 @@ export default function Home() {
                                           )}
                                         </td>
                                         <td className="py-1.5 pr-4 text-slate-700">
-                                          {job.technical_summary}
+                                          <div className="space-y-1">
+                                            <div className="font-medium">{job.technical_summary}</div>
+                                            {/* Brief Context */}
+                                            {job.campaign_name && (
+                                              <div className="text-[10px] text-slate-500">
+                                                Campaign: {job.campaign_name}
+                                              </div>
+                                            )}
+                                            {job.single_minded_proposition && (
+                                              <div className="text-[10px] text-teal-600 italic max-w-[180px] truncate" title={job.single_minded_proposition}>
+                                                SMP: {job.single_minded_proposition}
+                                              </div>
+                                            )}
+                                            {/* Flight Dates - Critical for media coordination */}
+                                            {(briefState.flight_start || briefState.flight_end) && (
+                                              <div className="text-[10px] text-indigo-600 flex items-center gap-1">
+                                                <span className="font-medium">Flight:</span>
+                                                {briefState.flight_start && <span>{briefState.flight_start}</span>}
+                                                {briefState.flight_start && briefState.flight_end && <span>→</span>}
+                                                {briefState.flight_end && <span>{briefState.flight_end}</span>}
+                                              </div>
+                                            )}
+                                            {/* Market/Language badge if set */}
+                                            {job.language && (
+                                              <span className="inline-block text-[9px] px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded">
+                                                {job.language}
+                                              </span>
+                                            )}
+                                          </div>
                                         </td>
                                         <td className="py-1.5 pr-4">
                                           <div className="flex flex-wrap gap-1">
@@ -6900,9 +7124,195 @@ export default function Home() {
                                             </div>
                                           ) : (
                                             <div className="space-y-1.5">
+                                              {/* Production Notes (auto-populated safe zones) */}
+                                              {job.production_notes && (
+                                                <div className="bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 text-[10px]">
+                                                  <div className="font-semibold text-amber-800 mb-1">Production Notes</div>
+                                                  <pre className="text-amber-700 whitespace-pre-wrap font-sans text-[10px]">
+                                                    {job.production_notes}
+                                                  </pre>
+                                                </div>
+                                              )}
+                                              {/* Duration & Format Constraints - Only show duration for video assets */}
+                                              <div className="flex flex-wrap gap-1.5 text-[10px]">
+                                                {job.max_duration_seconds && job.max_duration_seconds > 0 && (job.asset_type === 'video' || job.asset_type?.includes('video')) && (
+                                                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200">
+                                                    Max {job.max_duration_seconds}s
+                                                  </span>
+                                                )}
+                                                {job.file_format && (
+                                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200">
+                                                    {job.file_format}
+                                                  </span>
+                                                )}
+                                                {job.audio_spec && (job.asset_type === 'video' || job.asset_type?.includes('video')) && (
+                                                  <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200">
+                                                    {job.audio_spec}
+                                                  </span>
+                                                )}
+                                                {job.requires_subtitles && (job.asset_type === 'video' || job.asset_type?.includes('video')) && (
+                                                  <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded border border-green-200">
+                                                    Subtitles required
+                                                  </span>
+                                                )}
+                                                {/* Display-specific: file size limit */}
+                                                {job.file_size_limit_mb && (
+                                                  <span className="px-2 py-0.5 bg-orange-50 text-orange-700 rounded border border-orange-200">
+                                                    Max {job.file_size_limit_mb}KB
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {/* Market/Language & Shoot Code - Critical for global campaigns */}
+                                              <div className="flex gap-2 text-[10px]">
+                                                <select
+                                                  className="flex-1 border border-slate-300 rounded-md px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                  value={job.language || ''}
+                                                  onChange={(e) => {
+                                                    const updated = builderJobs.map(j => 
+                                                      j.job_id === job.job_id 
+                                                        ? { ...j, language: e.target.value } 
+                                                        : j
+                                                    );
+                                                    setBuilderJobs(updated);
+                                                  }}
+                                                >
+                                                  <option value="">Market / Language...</option>
+                                                  <option value="EN-US">EN-US (United States)</option>
+                                                  <option value="EN-UK">EN-UK (United Kingdom)</option>
+                                                  <option value="EN-AU">EN-AU (Australia)</option>
+                                                  <option value="DE-DE">DE-DE (Germany)</option>
+                                                  <option value="FR-FR">FR-FR (France)</option>
+                                                  <option value="ES-ES">ES-ES (Spain)</option>
+                                                  <option value="ES-MX">ES-MX (Mexico)</option>
+                                                  <option value="PT-BR">PT-BR (Brazil)</option>
+                                                  <option value="JA-JP">JA-JP (Japan)</option>
+                                                  <option value="ZH-CN">ZH-CN (China)</option>
+                                                  <option value="KO-KR">KO-KR (Korea)</option>
+                                                  <option value="MULTI">Multi-market</option>
+                                                  <option value="GLOBAL">Global (No localization)</option>
+                                                </select>
+                                                <input
+                                                  className="w-28 border border-slate-300 rounded-md px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                                  placeholder="Shoot code"
+                                                  value={job.shoot_code || ''}
+                                                  onChange={(e) => {
+                                                    const updated = builderJobs.map(j => 
+                                                      j.job_id === job.job_id 
+                                                        ? { ...j, shoot_code: e.target.value } 
+                                                        : j
+                                                    );
+                                                    setBuilderJobs(updated);
+                                                  }}
+                                                />
+                                              </div>
+                                              {/* Source Type & Version */}
+                                              <div className="flex gap-2 text-[10px]">
+                                                <select
+                                                  className="flex-1 border border-slate-300 rounded-md px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                  value={job.source_type || ''}
+                                                  onChange={(e) => {
+                                                    const updated = builderJobs.map(j => 
+                                                      j.job_id === job.job_id 
+                                                        ? { ...j, source_type: e.target.value as any } 
+                                                        : j
+                                                    );
+                                                    setBuilderJobs(updated);
+                                                  }}
+                                                >
+                                                  <option value="">Source type...</option>
+                                                  <option value="new_shoot">New Shoot</option>
+                                                  <option value="stock">Stock</option>
+                                                  <option value="existing">Existing Asset</option>
+                                                  <option value="ugc">UGC</option>
+                                                  <option value="ai_generated">AI Generated</option>
+                                                </select>
+                                                <input
+                                                  className="w-20 border border-slate-300 rounded-md px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                                  placeholder="Round"
+                                                  value={job.round_label || 'R1'}
+                                                  onChange={(e) => {
+                                                    const updated = builderJobs.map(j => 
+                                                      j.job_id === job.job_id 
+                                                        ? { ...j, round_label: e.target.value } 
+                                                        : j
+                                                    );
+                                                    setBuilderJobs(updated);
+                                                  }}
+                                                />
+                                                <input
+                                                  className="w-16 border border-slate-300 rounded-md px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                                  placeholder="Ver"
+                                                  value={job.version_tag || 'v1'}
+                                                  onChange={(e) => {
+                                                    const updated = builderJobs.map(j => 
+                                                      j.job_id === job.job_id 
+                                                        ? { ...j, version_tag: e.target.value } 
+                                                        : j
+                                                    );
+                                                    setBuilderJobs(updated);
+                                                  }}
+                                                />
+                                              </div>
+                                              {/* Legal & Compliance - Critical for omnichannel */}
+                                              <div className="flex flex-wrap gap-1.5 text-[10px]">
+                                                <label className="flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-700 rounded border border-red-200 cursor-pointer">
+                                                  <input
+                                                    type="checkbox"
+                                                    className="h-3 w-3"
+                                                    checked={job.legal_disclaimer_required || false}
+                                                    onChange={(e) => {
+                                                      const updated = builderJobs.map(j => 
+                                                        j.job_id === job.job_id 
+                                                          ? { ...j, legal_disclaimer_required: e.target.checked } 
+                                                          : j
+                                                      );
+                                                      setBuilderJobs(updated);
+                                                    }}
+                                                  />
+                                                  Legal disclaimer
+                                                </label>
+                                                <select
+                                                  className="border border-slate-300 rounded px-1 py-0.5 text-[10px] bg-white"
+                                                  value={job.talent_usage_rights || ''}
+                                                  onChange={(e) => {
+                                                    const updated = builderJobs.map(j => 
+                                                      j.job_id === job.job_id 
+                                                        ? { ...j, talent_usage_rights: e.target.value } 
+                                                        : j
+                                                    );
+                                                    setBuilderJobs(updated);
+                                                  }}
+                                                >
+                                                  <option value="">Talent rights...</option>
+                                                  <option value="perpetual">Perpetual</option>
+                                                  <option value="1_year">1 Year</option>
+                                                  <option value="6_months">6 Months</option>
+                                                  <option value="campaign_only">Campaign Only</option>
+                                                  <option value="check_legal">Check with Legal</option>
+                                                </select>
+                                                <select
+                                                  className="border border-slate-300 rounded px-1 py-0.5 text-[10px] bg-white"
+                                                  value={job.music_licensing_status || ''}
+                                                  onChange={(e) => {
+                                                    const updated = builderJobs.map(j => 
+                                                      j.job_id === job.job_id 
+                                                        ? { ...j, music_licensing_status: e.target.value } 
+                                                        : j
+                                                    );
+                                                    setBuilderJobs(updated);
+                                                  }}
+                                                >
+                                                  <option value="">Music license...</option>
+                                                  <option value="licensed">Licensed</option>
+                                                  <option value="stock">Stock/Royalty-free</option>
+                                                  <option value="needs_clearance">Needs Clearance</option>
+                                                  <option value="original">Original Composition</option>
+                                                  <option value="none">No Music</option>
+                                                </select>
+                                              </div>
                                               <textarea
                                                 className="w-full min-w-[200px] text-[11px] border border-slate-300 rounded-md px-2 py-1 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                                rows={3}
+                                                rows={2}
                                                 placeholder="Build direction for production team (free form)."
                                                 value={buildDirectionValue}
                                                 onChange={(e) =>
@@ -6911,9 +7321,9 @@ export default function Home() {
                                               />
                                               <textarea
                                                 className="w-full min-w-[200px] text-[11px] border border-slate-300 rounded-md px-2 py-1 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                                rows={3}
-                                                placeholder="File type, safe zones, animation asks."
-                                                value={meta.production_details ?? job.production_details ?? ''}
+                                                rows={2}
+                                                placeholder="Localization notes: adaptation instructions, cultural considerations."
+                                                value={job.localization_notes || meta.production_details || job.production_details || ''}
                                                 onChange={(e) =>
                                                   updateJobFeedMeta(job.job_id, 'production_details', e.target.value)
                                                 }
@@ -8655,6 +9065,67 @@ export default function Home() {
                                     </button>
                                   ))}
                                 </div>
+                              </div>
+
+                              {/* 1b. Funnel Stage Selector */}
+                              <div className="border-t border-gray-100 pt-4">
+                                <label className="text-[11px] font-medium text-slate-600 mb-2 block">Funnel Stage</label>
+                                <div className="flex flex-wrap gap-1">
+                                  {(['awareness', 'consideration', 'conversion', 'retention'] as const).map((stage) => {
+                                    const isSelected = c.funnelStages?.includes(stage);
+                                    const stageConfig = {
+                                      awareness: { label: 'Awareness', color: 'purple', icon: '👀' },
+                                      consideration: { label: 'Consideration', color: 'blue', icon: '🤔' },
+                                      conversion: { label: 'Conversion', color: 'green', icon: '✅' },
+                                      retention: { label: 'Retention', color: 'amber', icon: '🔄' },
+                                    };
+                                    const config = stageConfig[stage];
+                                    return (
+                                      <button
+                                        key={stage}
+                                        type="button"
+                                        onClick={() => {
+                                          setConcepts((prev) =>
+                                            prev.map((concept, i) => {
+                                              if (i !== index) return concept;
+                                              const currentStages = concept.funnelStages || [];
+                                              const newStages = currentStages.includes(stage)
+                                                ? currentStages.filter((s) => s !== stage)
+                                                : [...currentStages, stage];
+                                              return { ...concept, funnelStages: newStages };
+                                            })
+                                          );
+                                        }}
+                                        className={`px-2 py-1 text-[10px] rounded-full transition-colors font-medium ${
+                                          isSelected
+                                            ? `bg-${config.color}-100 text-${config.color}-700 border border-${config.color}-300`
+                                            : 'bg-slate-50 text-slate-500 border border-slate-200 hover:border-slate-300'
+                                        }`}
+                                      >
+                                        {config.icon} {config.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* 1c. Module Type (for DCO taxonomy) */}
+                              <div>
+                                <label className="text-[11px] font-medium text-slate-600 mb-2 block">Module Type</label>
+                                <select
+                                  className="w-full border border-gray-200 rounded px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                  value={c.moduleType || ''}
+                                  onChange={(e) => updateConceptField(index, 'moduleType', e.target.value)}
+                                >
+                                  <option value="">Select module type...</option>
+                                  <option value="hook">🎯 Hook (attention-grabber)</option>
+                                  <option value="value_prop">💎 Value Proposition</option>
+                                  <option value="proof_point">✓ Proof Point</option>
+                                  <option value="product">📦 Product</option>
+                                  <option value="offer">🏷️ Offer</option>
+                                  <option value="cta">👆 CTA</option>
+                                  <option value="end_card">🎬 End Card</option>
+                                </select>
                               </div>
 
                               {/* 2. Audience Line Selection */}

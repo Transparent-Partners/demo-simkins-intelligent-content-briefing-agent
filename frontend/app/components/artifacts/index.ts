@@ -12,6 +12,6 @@ export { AlignmentCheckpoints, AlignmentStatusBadge } from './AlignmentCheckpoin
 export { PlanningPackages } from './PlanningPackages';
 
 // Production Handoff - For DCO/Automation Platforms
-export { ModuleLibrary } from './ModuleLibrary';
+export { ModuleLibrary, PlatformExport } from './ModuleLibrary';
 export { DecisioningEditor } from './DecisioningEditor';
 export { FeedPreview } from './FeedPreview';

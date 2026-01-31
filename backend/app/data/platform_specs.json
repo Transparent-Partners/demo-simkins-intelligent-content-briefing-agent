@@ -97,6 +97,7 @@
           "ratio": "9:16",
           "resolution_recommended": "1080x1920",
           "media_type": "video",
+          "max_duration_seconds": 60,
           "safe_zones": {
             "instruction": "Avoid corners; keep important content in the central vertical band."
           }

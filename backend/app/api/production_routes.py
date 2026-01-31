@@ -57,10 +57,22 @@ class MatrixBuilderRequest(BaseModel):
 
     creative_concept: str
     spec_ids: List[str]
+    
+    # Optional brief context for production traceability
+    campaign_name: str | None = None
+    single_minded_proposition: str | None = None
+    
+    # Optional source type override for all jobs
+    source_type: str | None = None  # "New Shoot", "Stock", "Existing", "UGC", "AI Generated"
 
 
 class MatrixBuilderResponse(BaseModel):
     jobs: List[ProductionJob]
+    
+    # Summary for production planning
+    total_jobs: int = 0
+    total_destinations: int = 0
+    consolidated_formats: List[str] = []
 
 
 @router.post("/generate", response_model=GenerateProductionResponse)
@@ -115,6 +127,8 @@ async def build_production_jobs(payload: MatrixBuilderRequest) -> MatrixBuilderR
     - Looks up the selected specs from the Spec Library (by ID).
     - Uses MatrixBuilder to collapse redundant specs into master ProductionJobs.
     - Returns the consolidated job list for display in the UI.
+    - Now includes brief context (campaign name, SMP) for production traceability.
+    - Consolidates safe zone guidance into production_notes field.
 
     Note: For this POC, jobs are not persisted to a real database; the
     frontend treats the response as the current working plan.
@@ -136,8 +150,25 @@ async def build_production_jobs(payload: MatrixBuilderRequest) -> MatrixBuilderR
         jobs = builder.group_specs_by_creative(
             selected_specs=selected_specs,
             creative_concept=payload.creative_concept,
+            campaign_name=payload.campaign_name,
+            single_minded_proposition=payload.single_minded_proposition,
         )
-        return MatrixBuilderResponse(jobs=jobs)
+        
+        # Apply source_type override if provided
+        if payload.source_type:
+            for job in jobs:
+                job.source_type = payload.source_type
+        
+        # Calculate summary metrics
+        total_destinations = sum(len(job.destinations) for job in jobs)
+        consolidated_formats = list(set(job.asset_type for job in jobs))
+        
+        return MatrixBuilderResponse(
+            jobs=jobs,
+            total_jobs=len(jobs),
+            total_destinations=total_destinations,
+            consolidated_formats=consolidated_formats,
+        )
     except HTTPException:
         raise
     except Exception as e:
