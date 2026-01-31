@@ -926,7 +926,7 @@ export default function Home() {
         let suggestions = '';
         
         if (smpKeywords.includes('wellness') || smpKeywords.includes('health') || smpKeywords.includes('sleep')) {
-          suggestions = `**Suggested Audience Segments (Based on SMP: "${campaign.smp.slice(0, 60)}...")**\n\n1. **Stressed Professionals** (High Priority)\n   • Insight: "I need to switch off but can't"\n   • Trigger: Evening browsing, productivity content\n   • Platforms: LinkedIn, Instagram, YouTube\n\n2. **Health-Conscious Parents**\n   • Insight: "I put everyone else first"\n   • Trigger: School schedule, family wellness content\n   • Platforms: Meta, Pinterest, CTV\n\n3. **Wellness Skeptics**\n   • Insight: "I've tried everything, nothing works"\n   • Trigger: Product reviews, testimonials\n   • Platforms: YouTube, Reddit (via programmatic)\n\n**Downstream Impact:** These segments will drive ${3 * concepts.count} concept variations minimum.`;
+          suggestions = `**Suggested Audience Segments (Based on SMP: "${campaign.smp.slice(0, 60)}...")**\n\n1. **Stressed Professionals** (High Priority)\n   • Insight: "I need to switch off but can't"\n   • Trigger: Evening browsing, productivity content\n   • Platforms: LinkedIn, Instagram, YouTube\n\n2. **Health-Conscious Parents**\n   • Insight: "I put everyone else first"\n   • Trigger: School schedule, family wellness content\n   • Platforms: Meta, Pinterest, CTV\n\n3. **Wellness Skeptics**\n   • Insight: "I've tried everything, nothing works"\n   • Trigger: Product reviews, testimonials\n   • Platforms: YouTube, Reddit (via programmatic)\n\n**Downstream Impact:** These segments will drive ${3 * concepts.length} concept variations minimum.`;
         } else if (smpKeywords.includes('value') || smpKeywords.includes('save') || smpKeywords.includes('deal')) {
           suggestions = `**Suggested Audience Segments (Based on SMP: "${campaign.smp.slice(0, 60)}...")**\n\n1. **Smart Shoppers** (High Priority)\n   • Insight: "I research before I buy"\n   • Trigger: Price comparison, review content\n   • Platforms: Google, YouTube, Meta\n\n2. **Deal Seekers**\n   • Insight: "I wait for the right moment"\n   • Trigger: Promotional periods, flash sales\n   • Platforms: Email, Meta, Push notifications\n\n3. **Value Maximizers**\n   • Insight: "I want the best bang for my buck"\n   • Trigger: Bundle offers, loyalty perks\n   • Platforms: CTV, Display, LinkedIn\n\n**Next Step:** Add these to your matrix, then move to Concepts to build messaging variations.`;
         } else {
@@ -1090,14 +1090,14 @@ export default function Home() {
       } else {
         // Live mode: call API with enhanced context
         const contextSummary = JSON.stringify(workflowCtx, null, 2);
-        const systemPrompt = `You are a ModCon production SME helping with the ${ctx} module. Understand the full workflow: Brief → Audiences → Concepts → Production → Feed. Be concise and actionable.\n\nContext:\n${contextSummary}`;
+        const systemPrompt = `You are a ModCon production SME helping with the ${ctx} module. Advisory-only: provide QA, recommendations, and guidance. Do NOT complete, write, or modify any fields; do NOT assume changes have been applied. Understand the full workflow: Brief → Audiences → Concepts → Production → Feed. Be concise and actionable.\n\nContext:\n${contextSummary}`;
 
         const response = await fetch('/api/brief', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: `${systemPrompt}\n\nUser: ${message}`,
-            context: { module: ctx, workflow: workflowCtx },
+            context: { module: ctx, workflow: workflowCtx, advisory_only: true },
           }),
         });
 
@@ -5019,7 +5019,7 @@ export default function Home() {
     <>
     <main
       ref={containerRef}
-      className="flex flex-col h-screen bg-[#F8FAFC] overflow-hidden font-sans text-slate-800"
+      className="flex flex-col min-h-screen w-full bg-white overflow-x-hidden font-sans text-slate-800"
     >
       {/* Global header - clean, single-row navigation */}
       <div className="px-6 py-4 border-b border-gray-200 bg-white shadow-sm z-50 relative">
@@ -5198,7 +5198,7 @@ export default function Home() {
       {/* QA Results Panel */}
       {showQaPanel && qaResults.length > 0 && (
         <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
-          <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="w-full px-4 py-3">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-3">
                 <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
@@ -5275,11 +5275,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* Main workspace row: left chat + right panel */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Main workspace row: module content + optional AI assistant */}
+      <div className="flex flex-1 w-full min-w-0 overflow-hidden bg-white">
         {/* LEFT: Chat Interface (Brief-only) */}
         {workspaceView === 'brief' && (
-          <div className="flex flex-col border-r border-gray-200 relative w-full md:w-1/2 md:max-w-1/2">
+          <div className="flex flex-col border-r border-gray-200 relative w-full md:w-1/2 md:max-w-1/2 min-w-0">
             {workspaceGuidance && (
               <WorkspaceGuidanceBanner
                 title={workspaceGuidance.title}
@@ -5530,12 +5530,12 @@ export default function Home() {
             </div>
           </div>
         )}
-      </div>
-      )}
+          </div>
+        )}
 
-      {/* RIGHT: Live Brief Panel on Brief tab */}
-      {workspaceView === 'brief' && (
-        <div className="hidden md:flex flex-col w-1/2 max-w-1/2 bg-white border-l border-gray-200 shadow-xl z-10">
+        {/* RIGHT: Live Brief Panel on Brief tab */}
+        {workspaceView === 'brief' && (
+          <div className="hidden md:flex flex-col w-1/2 max-w-1/2 min-w-0 bg-white border-l border-gray-200 shadow-xl z-10 overflow-hidden">
           <div className="px-6 py-5 border-b border-gray-100 bg-white flex justify-between items-center select-none">
             <div className="flex items-center gap-3">
               <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Intelligent Content Brief</h2>
@@ -5996,20 +5996,17 @@ export default function Home() {
             tips={moduleAssistant.tips}
             dataFlowNote={moduleAssistant.dataFlowNote}
           />
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* RIGHT: Live Preview / Strategy Matrix Workspace / Concepts */}
-      {workspaceView !== 'brief' && (
-      <>
-        <div
-          className={`bg-white border-l border-gray-200 hidden md:flex flex-col shadow-xl z-20 transition-all duration-300 ${
-            showAIAssistant ? 'w-2/3' : 'w-full'
-          }`}
-        >
-          <div className="px-6 py-5 border-b border-gray-100 bg-white flex justify-between items-center select-none">
+        {/* Module Content: Strategy Matrix Workspace / Concepts / Production / Feed */}
+        {workspaceView !== 'brief' && (
+          <>
+          {/* Main Module Content */}
+          <div className="bg-white flex flex-col flex-1 min-w-0 overflow-hidden">
+            <div className="px-6 py-5 border-b border-gray-100 bg-white flex justify-between items-center select-none">
             <div className="flex items-center gap-4">
-              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+              <h2 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">
                 {workspaceView === 'matrix'
                   ? 'Audience Matrix'
                   : workspaceView === 'concepts'
@@ -6144,8 +6141,8 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex-1 p-6 overflow-y-auto bg-slate-50/30 relative">
-            <div className="space-y-6">
+          <div className="flex-1 px-6 py-6 overflow-auto bg-white relative">
+            <div className="space-y-6 w-full">
               {workspaceView === 'matrix' && (
                 <>
                   {matrixRows.length === 0 ? (
@@ -6283,29 +6280,29 @@ export default function Home() {
                             </div>
                           </div>
                         )}
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-xs text-left table-fixed">
-                            <thead className="bg-slate-50 text-slate-500 sticky top-0 z-10">
+                        <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                          <table className="text-xs text-left min-w-[1800px]">
+                            <thead className="bg-slate-100 border-b border-slate-200">
                               <tr>
-                                <th className="px-2 py-2 w-14 text-center font-semibold">Line</th>
-                                <th className="px-2 py-2 w-8 text-center"></th>
+                                <th className="px-3 py-3 w-[60px] text-center font-semibold text-[11px] uppercase tracking-wide text-slate-600 whitespace-nowrap">Line</th>
+                                <th className="px-2 py-3 w-[40px] text-center"></th>
                                 {matrixFields.filter((f) => visibleMatrixFields.includes(f.key)).map((field) => {
-                                  // Assign minimum widths based on field type
-                                  const minWidth = 
+                                  // Assign fixed widths based on field type
+                                  const colWidth = 
                                     field.key.includes('description') || field.key.includes('insight') || field.key.includes('perception') 
-                                      ? 'min-w-[200px]' 
+                                      ? 'w-[180px]' 
                                       : field.key.includes('name') || field.key.includes('segment') 
-                                      ? 'min-w-[140px]'
+                                      ? 'w-[130px]'
                                       : field.key.includes('size') || field.key.includes('id')
-                                      ? 'min-w-[80px]'
-                                      : 'min-w-[120px]';
+                                      ? 'w-[80px]'
+                                      : 'w-[110px]';
                                   return (
-                                    <th 
+                                <th 
                                       key={field.key} 
-                                      className={`px-2 py-2 ${minWidth} truncate group relative cursor-help`}
+                                      className={`px-3 py-3 ${colWidth} align-top group relative`}
                                       title={field.label}
                                     >
-                                      <span className="truncate block">{field.label}</span>
+                                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap overflow-hidden text-ellipsis">{field.label}</span>
                                       {/* Tooltip on hover */}
                                       <div className="absolute hidden group-hover:block z-20 left-0 top-full mt-1 px-2 py-1 bg-slate-800 text-white text-[10px] rounded shadow-lg whitespace-nowrap">
                                         {field.label}
@@ -6313,19 +6310,19 @@ export default function Home() {
                                     </th>
                                   );
                                 })}
-                                <th className="px-2 py-2 w-16"></th>
+                                <th className="px-3 py-3 w-[70px]"></th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100">
+                            <tbody className="divide-y divide-gray-100 bg-white">
                               {matrixRows.map((row, index) => (
                                 <Fragment key={index}>
                                   <tr className="align-top hover:bg-slate-50/70">
-                                    <td className="px-2 py-1 text-center">
+                                    <td className="px-3 py-2 w-[60px] text-center">
                                       <span className="text-xs font-mono font-semibold text-slate-700">
                                         {(index + 1).toString().padStart(3, '0')}
                                       </span>
                                     </td>
-                                    <td className="px-2 py-1 text-center">
+                                    <td className="px-2 py-2 w-[40px] text-center">
                                       <button
                                         type="button"
                                         onClick={() => toggleMatrixRowExpanded(index)}
@@ -6336,27 +6333,27 @@ export default function Home() {
                                     </td>
                                     {matrixFields.filter((f) => visibleMatrixFields.includes(f.key)).map((field) => {
                                       const cellValue = row[field.key] ?? '';
-                                      const minWidth = 
+                                      const colWidth = 
                                         field.key.includes('description') || field.key.includes('insight') || field.key.includes('perception') 
-                                          ? 'min-w-[200px]' 
+                                          ? 'w-[180px]' 
                                           : field.key.includes('name') || field.key.includes('segment') 
-                                          ? 'min-w-[140px]'
+                                          ? 'w-[130px]'
                                           : field.key.includes('size') || field.key.includes('id')
-                                          ? 'min-w-[80px]'
-                                          : 'min-w-[120px]';
+                                          ? 'w-[80px]'
+                                          : 'w-[110px]';
                                       return (
-                                      <td key={field.key} className={`px-2 py-1 ${minWidth}`}>
+                                      <td key={field.key} className={`px-2 py-2 ${colWidth}`}>
                                         <input
                                           value={cellValue}
                                           onChange={(e) =>
                                             updateMatrixCell(index, field.key as MatrixFieldKey, e.target.value)
                                           }
                                           title={cellValue.length > 30 ? cellValue : undefined}
-                                          className="w-full border border-gray-200 rounded px-2 py-2 text-sm leading-5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500 truncate"
+                                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-[11px] leading-5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
                                         />
                                       </td>
                                     );})}
-                                    <td className="px-2 py-1 text-right">
+                                    <td className="px-2 py-2 w-[70px] text-right">
                                       <button
                                         onClick={() => removeMatrixRow(index)}
                                         className="text-[11px] text-slate-400 hover:text-red-500"
@@ -6457,19 +6454,19 @@ export default function Home() {
                         </div>
                       </div>
                       <div className="overflow-auto border border-slate-200 rounded-lg">
-                        <table className="w-full text-[11px] min-w-[900px]">
-                          <thead className="bg-slate-50 text-slate-600 uppercase tracking-wide text-[10px]">
+                        <table className="w-full text-[11px] min-w-[1100px]">
+                          <thead className="bg-slate-100 border-b border-slate-200">
                             <tr>
-                              <th className="px-3 py-2 text-left">Segment Source</th>
-                              <th className="px-3 py-2 text-left">Audience</th>
-                              <th className="px-3 py-2 text-left">Concept</th>
-                              <th className="px-3 py-2 text-left">Destination</th>
-                              <th className="px-3 py-2 text-left">Destinations (add more)</th>
-                              <th className="px-3 py-2 text-left">Feed?</th>
-                              <th className="px-3 py-2 text-left">Decisioning Rule</th>
-                              <th className="px-3 py-2 text-left">Production Details (non-feed)</th>
-                              <th className="px-3 py-2 text-left">Notes</th>
-                              <th className="px-3 py-2 text-right"></th>
+                              <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Segment Source</th>
+                              <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Audience</th>
+                              <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Concept</th>
+                              <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Destination</th>
+                              <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Add Destinations</th>
+                              <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Feed?</th>
+                              <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Decisioning</th>
+                              <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Production Details</th>
+                              <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Notes</th>
+                              <th className="px-3 py-3 text-right w-16"></th>
                             </tr>
                           </thead>
                           <tbody>
@@ -6777,16 +6774,16 @@ export default function Home() {
                               One row per asset to be built, grouped by shared specs with destinations attached.
                               Add requirements and a simple status before you move work to the board.
                             </p>
-                            <div className="overflow-x-auto">
+                            <div className="overflow-x-auto border border-slate-200 rounded-lg">
                               <table className="min-w-full text-[11px]">
-                                <thead>
-                                  <tr className="text-left text-slate-500 border-b border-slate-200">
-                                    <th className="py-1.5 pr-4 font-semibold">Production Asset</th>
-                                    <th className="py-1.5 pr-4 font-semibold">Tech Specs</th>
-                                    <th className="py-1.5 pr-4 font-semibold">Destinations</th>
-                                    <th className="py-1.5 pr-4 font-semibold">Build Details</th>
-                                    <th className="py-1.5 pr-4 font-semibold">Requirements</th>
-                                    <th className="py-1.5 pr-4 font-semibold">Status</th>
+                                <thead className="bg-slate-100 border-b border-slate-200">
+                                  <tr className="text-left">
+                                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Production Asset</th>
+                                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Tech Specs</th>
+                                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Destinations</th>
+                                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Build Details</th>
+                                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Requirements</th>
+                                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Status</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -8032,27 +8029,27 @@ export default function Home() {
                     <div className="border border-slate-200 rounded-xl bg-white overflow-hidden">
                       <div className="max-h-[520px] overflow-auto">
                         <table className="min-w-full text-[11px]">
-                          <thead className="bg-slate-50 sticky top-0 z-10">
+                          <thead className="bg-slate-100 sticky top-0 z-10 border-b border-slate-200">
                             <tr>
-                              <th className="w-8 px-3 py-2 border-b border-slate-200 bg-slate-50">
+                              <th className="w-8 px-3 py-3 bg-slate-100">
                                 <span className="sr-only">Select</span>
                               </th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
+                              <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">
                                 Platform
                               </th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
+                              <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">
                                 Placement
                               </th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
+                              <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">
                                 Size
                               </th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
+                              <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">
                                 Orientation
                               </th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
+                              <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">
                                 Media Type
                               </th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">
+                              <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">
                                 Notes
                               </th>
                             </tr>
@@ -8400,9 +8397,9 @@ export default function Home() {
               )}
 
               {workspaceView === 'concepts' && rightTab === 'builder' && (
-                <div className="space-y-4">
+                <div className="space-y-4 w-full">
                   {/* Top-level Concept Canvas toolbar */}
-                  <div className="flex flex-col gap-2 mb-2">
+                  <div className="flex flex-col gap-2 mb-2 w-full">
                     <div className="flex justify-between items-center">
                       <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         Concept Canvas
@@ -8602,16 +8599,16 @@ export default function Home() {
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-6">
+                    <div className="space-y-6 w-full">
                       {concepts.map((c, index) => {
                         const isOnMoodBoard = moodBoardConceptIds.includes(c.id);
                         return (
                           <div
                             key={c.id}
-                            className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch"
+                            className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start"
                           >
                             {/* LEFT COLUMN: Concept Instructions (Asset Type → Audience Line → Fields → Description) */}
-                            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col gap-4 h-full">
+                            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col gap-4">
                               <div className="flex items-center justify-between">
                                 <h4 className="text-sm font-semibold text-slate-700">
                                   Concept Instructions
@@ -8619,7 +8616,14 @@ export default function Home() {
                                     <span className="ml-2 text-xs text-slate-400 font-normal">
                                       (Audience: {c.audienceLineIds.map((id) => {
                                         const lineIndex = matrixRows.findIndex((r) => r.id === id);
-                                        return (lineIndex + 1).toString().padStart(3, '0');
+                                        const lineRow = matrixRows[lineIndex];
+                                        const segmentName = lineRow
+                                          ? String(
+                                              lineRow.segment_name ?? lineRow.audience_segment ?? lineRow.audience ?? ''
+                                            ).trim()
+                                          : '';
+                                        const lineLabel = (lineIndex + 1).toString().padStart(3, '0');
+                                        return segmentName ? `${lineLabel} — ${segmentName}` : lineLabel;
                                       }).join(', ')})
                                     </span>
                                   )}
@@ -8634,14 +8638,14 @@ export default function Home() {
                               
                               {/* 1. Asset Type Selector */}
                               <div>
-                                <label className="text-xs font-medium text-slate-600 mb-2 block">Asset Type</label>
+                                <label className="text-[11px] font-medium text-slate-600 mb-2 block">Asset Type</label>
                                 <div className="inline-flex items-center gap-1 rounded-lg bg-slate-50 border border-slate-200 p-1 w-full">
                                   {(['image', 'copy', 'video'] as const).map((kind) => (
                                     <button
                                       key={kind}
                                       type="button"
                                       onClick={() => updateConceptField(index, 'kind', kind)}
-                                      className={`flex-1 px-4 py-2 text-sm rounded-md transition-colors font-medium ${
+                                      className={`flex-1 px-4 py-2 text-xs rounded-md transition-colors font-medium ${
                                         (c.kind ?? 'image') === kind
                                           ? 'bg-white text-slate-900 shadow-sm'
                                           : 'text-slate-500 hover:text-slate-700'
@@ -8655,9 +8659,9 @@ export default function Home() {
 
                               {/* 2. Audience Line Selection */}
                               <div className="border-t border-gray-100 pt-4">
-                                <label className="text-xs font-medium text-slate-600 mb-2 block">Select Audience Line</label>
+                                <label className="text-[11px] font-medium text-slate-600 mb-2 block">Select Audience Line</label>
                                   <select
-                                    className="w-full border border-gray-200 rounded px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
+                                    className="w-full border border-gray-200 rounded px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500/40 focus:border-teal-500"
                                     defaultValue=""
                                     onChange={(e) => {
                                       const selectedId = e.target.value;
@@ -8757,6 +8761,9 @@ export default function Home() {
                                     {matrixRows.map((row, rowIndex) => {
                                       // Ensure row has an id - use existing id or generate one
                                       const rowId = row.id || `ROW-${(rowIndex + 1).toString().padStart(3, '0')}`;
+                                      const segmentName = String(
+                                        row.segment_name ?? row.audience_segment ?? row.audience ?? ''
+                                      ).trim();
                                       // If row doesn't have id, add it to the row
                                       if (!row.id) {
                                         // Update the row to have an id (this is a one-time fix)
@@ -8769,6 +8776,7 @@ export default function Home() {
                                       return (
                                         <option key={rowId} value={rowId}>
                                           {(rowIndex + 1).toString().padStart(3, '0')}
+                                          {segmentName ? ` — ${segmentName}` : ''}
                                         </option>
                                       );
                                     })}
@@ -8778,12 +8786,21 @@ export default function Home() {
                                     <div className="mt-2 flex flex-wrap gap-1">
                                       {c.audienceLineIds.map((lineId) => {
                                         const lineIndex = matrixRows.findIndex((r) => r.id === lineId);
+                                        const lineRow = matrixRows[lineIndex];
+                                        const segmentName = lineRow
+                                          ? String(
+                                              lineRow.segment_name ?? lineRow.audience_segment ?? lineRow.audience ?? ''
+                                            ).trim()
+                                          : '';
                                         return (
                                           <span
                                             key={lineId}
                                             className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded"
                                           >
                                             {(lineIndex + 1).toString().padStart(3, '0')}
+                                            {segmentName ? (
+                                              <span className="text-blue-600">{segmentName}</span>
+                                            ) : null}
                                             <button
                                               type="button"
                                               onClick={() => {
@@ -9124,7 +9141,7 @@ export default function Home() {
                             </div>
 
                             {/* RIGHT COLUMN: Concept Generator (Prompt + Output) */}
-                            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col gap-4 h-full">
+                            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col gap-4">
                               <div className="flex items-center justify-between">
                                 <h4 className="text-sm font-semibold text-slate-700">Concept Generator</h4>
                                 {c.kind && (
@@ -9936,16 +9953,16 @@ export default function Home() {
                           : 'No rows yet. Use "Add first row" to start your feed.'}
                       </p>
                     </div>
-                    <div className="max-h-[480px] overflow-auto">
+                    <div className="max-h-[480px] overflow-auto border border-slate-200 rounded-lg">
                       <table className="w-full text-[11px] table-auto">
-                        <thead className="bg-slate-50 sticky top-0 z-10">
+                        <thead className="bg-slate-100 sticky top-0 z-10 border-b border-slate-200">
                           <tr>
                             {feedFields
                               .filter((col) => visibleFeedFields.includes(col.key))
                               .map((col) => (
                               <th
                                 key={col.key as string}
-                                className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200"
+                                className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap"
                               >
                                 {col.label}
                               </th>
@@ -10067,22 +10084,21 @@ export default function Home() {
               </div>
             </div>
           )}
-        </div>
+          </div>
 
-        {/* AI Assistant Panel - Right Side for Non-Brief Modules */}
-        {showAIAssistant && (
-          <div className="w-1/3 min-w-[320px] max-w-[400px] bg-white border-l border-slate-200 flex flex-col shadow-xl">
+          {/* AI Assistant Panel - Right Side for Non-Brief Modules */}
+          {showAIAssistant && (
+            <div className="w-72 lg:w-80 flex-shrink-0 bg-white flex flex-col border-l border-slate-200 overflow-hidden">
             {/* Header */}
-            <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+            <div className="px-6 py-5 min-h-[56px] border-b border-gray-100 bg-white flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
                   <svg className="w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                   </svg>
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-800">AI Assistant</h3>
-                  <p className="text-[10px] text-slate-500 capitalize">{getCurrentModuleContext()} Helper</p>
+                <div className="text-xs font-semibold text-slate-800 truncate">
+                  AI Assistant • {getCurrentModuleContext()} Helper • Advisory only
                 </div>
               </div>
               <button
@@ -10190,11 +10206,11 @@ export default function Home() {
               )}
             </div>
           </div>
+          )}
+          </>
         )}
-      </>
-      )}
 
-      {showPartnerLibrary && (
+        {showPartnerLibrary && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 px-4">
           <div className="w-full max-w-5xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50">
@@ -10301,10 +10317,10 @@ export default function Home() {
             dataFlowNote={moduleAssistant.dataFlowNote}
           />
         </div>
-      )}
+        )}
 
-      {/* Concept detail shadowbox */}
-      {conceptDetail && (
+        {/* Concept detail shadowbox */}
+        {conceptDetail && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 px-4"
           onClick={() => setConceptDetail(null)}
@@ -10415,9 +10431,8 @@ export default function Home() {
             </div>
           </div>
         </div>
-      )}
+        )}
 
-      {/* Close main workspace row container */}
       </div>
 
       {/* Audience import modal */}
@@ -10474,10 +10489,10 @@ export default function Home() {
                   </div>
                   <div className="max-h-48 overflow-auto">
                     <table className="min-w-full text-[11px]">
-                      <thead className="bg-slate-50 text-slate-600">
+                      <thead className="bg-slate-100 border-b border-slate-200">
                         <tr>
                           {audienceImportColumns.map((col) => (
-                            <th key={col} className="px-2 py-1 text-left">
+                            <th key={col} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">
                               {col}
                             </th>
                           ))}
@@ -10564,17 +10579,17 @@ export default function Home() {
             {/* Placements table */}
             <div className="flex-1 overflow-auto px-5 py-4">
               <table className="min-w-full text-[11px]">
-                <thead className="sticky top-0 bg-white">
-                  <tr className="text-left text-slate-500 border-b border-slate-200">
-                    <th className="py-2 pr-3 w-10"></th>
-                    <th className="py-2 pr-3 font-semibold">Platform</th>
-                    <th className="py-2 pr-3 font-semibold">Placement</th>
-                    <th className="py-2 pr-3 font-semibold">Size</th>
-                    <th className="py-2 pr-3 font-semibold">Format</th>
-                    <th className="py-2 pr-3 font-semibold">Duration</th>
-                    <th className="py-2 pr-3 font-semibold">Budget</th>
-                    <th className="py-2 pr-3 font-semibold">Flight</th>
-                    <th className="py-2 font-semibold">Targeting</th>
+                <thead className="sticky top-0 bg-slate-100 border-b border-slate-200">
+                  <tr className="text-left">
+                    <th className="px-3 py-3 w-10"></th>
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Platform</th>
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Placement</th>
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Size</th>
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Format</th>
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Duration</th>
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Budget</th>
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Flight</th>
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap">Targeting</th>
                   </tr>
                 </thead>
                 <tbody>

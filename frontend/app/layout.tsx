@@ -16,11 +16,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} bg-slate-950 text-white antialiased`}>
+    <html lang="en" className="w-full min-w-full overflow-x-hidden bg-white">
+      <body className={`${inter.className} bg-white text-slate-900 antialiased w-full min-w-full overflow-x-hidden`}>
         <Providers>{children}</Providers>
       </body>
     </html>
   );
 }
-

@@ -33,7 +33,9 @@ export function Providers({ children }: ProvidersProps) {
       }}
     >
       <ToastProvider position="top-right" maxToasts={5}>
-        {children}
+        <div className="fixed inset-0 w-screen h-screen overflow-y-auto overflow-x-hidden bg-[#F8FAFC] text-slate-900">
+          {children}
+        </div>
       </ToastProvider>
     </ErrorBoundary>
   );

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { extractBriefFields as extractFields } from '../../utils/extractBriefFields';
+import { extractBriefFields as extractFields, ExtractedFields } from '../../utils/extractBriefFields';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GEMINI_API_KEY = process.env.GOOGLE_API_KEY;
@@ -7,7 +7,7 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-pro';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
 
 // Wrapper to maintain backward compatibility with the API route
-function extractBriefFields(chatLog: any[], currentState: any): Record<string, string> {
+function extractBriefFields(chatLog: any[], currentState: any): ExtractedFields {
   return extractFields(chatLog || [], currentState || {});
 }
 
